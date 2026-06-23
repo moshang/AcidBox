@@ -1,0 +1,9 @@
+# Add this to a new .clineignore file in your project root
+node_modules/
+build/
+dist/
+.pio/
+.git/
+*.mp4
+*.png
+*.jpg
