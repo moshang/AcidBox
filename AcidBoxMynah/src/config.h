@@ -12,7 +12,8 @@
 //#define TEST_POTS               // experimental interactivity with potentiometers connected to POT_PINS[] defined below
 
 //#define USE_INTERNAL_DAC      // use this for testing, SOUND QUALITY SACRIFICED: NOISY 8BIT STEREO
-#define NO_PSRAM              // if you don't have PSRAM on your board, then use this define, but REVERB TO BE SACRIFICED, ONE SMALL DRUM KIT SAMPLES USED 
+// NO_PSRAM is NOT defined — the ESP32-S3 SuperMini has 2MB quad-SPI PSRAM.
+// See boards/supermini.json: "psram_size": "2MB"
 
 //#define LOLIN_RGB               // Flashes the LOLIN S3 built-in RGB-LED
 
@@ -64,7 +65,7 @@ const uint8_t POT_PINS[POT_NUM] = {34, 35, 36};
 #define TWO_DIV_16383 (1.22077763e-04f)
 
 #define TABLE_BIT  		        10UL				// bits per index of lookup tables for waveforms, exp(), sin(), cos() etc. 10 bit means 2^10 = 1024 samples
-#define TABLE_SIZE            (1<<TABLE_BIT)        // samples used for lookup tables (it works pretty well down to 32 samples due to linear approximation, so listen and free some memory at your choice)
+#define TABLE_SIZE            (1<<TABLE_BIT)        // samples used for lookup tables (it works pretty well down to 32 samples due to linear interpolation, so listen and free some memory at your choice)
 #define TABLE_MASK  	        (TABLE_SIZE-1)        // strip MSB's and remain within our desired range of TABLE_SIZE
 #define CICLE_INDEX(i)        (((int32_t)(i)) & TABLE_MASK ) // this way we can operate with periodic functions or waveforms without phase-reset ("if's" are pretty costly in the matter of time)
 
@@ -97,18 +98,15 @@ const uint8_t POT_PINS[POT_NUM] = {34, 35, 36};
 #define CH_NUMBER  6 // closed hat instrument number in kit (for groupping, zero-based)
 #define OH_NUMBER  7 // open hat instrument number in kit (for groupping, zero-based)
 
-#ifdef NO_PSRAM
-  #define RAM_SAMPLER_CACHE  40000    // bytes, compact sample set is 132kB, first 8 samples is ~38kB
-  #define DEFAULT_DRUMKIT 4           // /data/4/ folder
-  #define SAMPLECNT       8           // how many samples we prepare (here just 8)
-#else
-//  #define PRELOAD_ALL                 // allows operating all the samples in realtime
-  #define PSRAM_SAMPLER_CACHE 3145728 // bytes, we are going to preload ALL the samples from FLASH to PSRAM
-                                      // we divide samples by octaves to use modifiers to particular instruments, not just note numbers
-                                      // i.e. we know that all the "C" notes in all octaves are bass drums, and CC_808_BD_TONE affects all BD's
-  #define SAMPLECNT       (7 * 12)    // how many samples we prepare (8 octaves by 12 samples)
-  #define DEFAULT_DRUMKIT 0           // in my /data /0 has a massive bassdrum , /6 = 808 samples
-#endif
+// PSRAM configuration for ESP32-S3 SuperMini (2MB quad-SPI PSRAM)
+// Memory budget:
+//   ~352 KB  — delay buffer (44100 samples × 2 ch × 4 bytes)
+//   ~1.5 MB  — sample cache (PSRAM_SAMPLER_CACHE)
+//   ~172 KB  — headroom for stack, heap fragmentation, etc.
+//   Total:   ~2.0 MB
+#define PSRAM_SAMPLER_CACHE 1572864 // 1.5 MB — fits comfortably in 2MB PSRAM with delay buffer
+#define SAMPLECNT       (7 * 12)    // how many samples we prepare (7 octaves by 12 samples)
+#define DEFAULT_DRUMKIT 0           // kit 0 = folder /0/ on LittleFS (matches CreateDefaultSamples())
 
 #define TINY 1e-32;
 

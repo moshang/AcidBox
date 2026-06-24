@@ -1011,6 +1011,15 @@ static void do_midi_start() {
   send_midi_control(SYNTH1_MIDI_CHAN, 91, 5);  // reverb send
   send_midi_control(SYNTH2_MIDI_CHAN, 91, 5);  // reverb send
   send_midi_control(DRUM_MIDI_CHAN,   91, 4);  // reverb send
+  // Initialise delay bus: time, feedback, and master mix level
+  send_midi_control(SYNTH1_MIDI_CHAN, 84, 60); // CC_ANY_DELAY_TIME  — ~50% delay time
+  send_midi_control(SYNTH1_MIDI_CHAN, 85, 40); // CC_ANY_DELAY_FB    — moderate feedback
+  send_midi_control(SYNTH1_MIDI_CHAN, 86, 80); // CC_ANY_DELAY_LVL   — moderate delay mix
+  // Initialise per-instrument delay sends (CC 92) so the delay bus receives signal.
+  // Synths: moderate send; drums: lighter send to keep transients clean
+  send_midi_control(SYNTH1_MIDI_CHAN, 92, 50); // CC_303_DELAY_SEND  — synth1 → delay
+  send_midi_control(SYNTH2_MIDI_CHAN, 92, 40); // CC_303_DELAY_SEND  — synth2 → delay
+  send_midi_control(DRUM_MIDI_CHAN,   92, 20); // CC_808_DELAY_SEND  — drums → delay
   send_midi_control(SYNTH1_MIDI_CHAN, 7, VOL_SYNTH1);
   send_midi_control(SYNTH2_MIDI_CHAN, 7, VOL_SYNTH2);
   send_midi_control(DRUM_MIDI_CHAN,   7, VOL_DRUMS);

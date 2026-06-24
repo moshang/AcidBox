@@ -138,8 +138,15 @@ void Sampler::Init() {
   ScanContents(LittleFS, myDir.c_str() , 5);
   if (sampleInfoCount<5) {
     Serial.println("  Less than 5 samples found");
-    // Only try to create defaults if LittleFS is actually mounted
-    // We can't create files on an unmounted filesystem
+    // Create default samples if LittleFS is mounted and no samples exist
+    if (LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)) {
+      Serial.println("  Creating default samples...");
+      CreateDefaultSamples(LittleFS);
+      // Re-scan to pick up the newly created samples
+      sampleInfoCount = 0;
+      ScanContents(LittleFS, myDir.c_str() , 5);
+      Serial.printf("  Found %d samples after creating defaults\n", sampleInfoCount);
+    }
   }
   repeat = min((uint8_t)sampleInfoCount , repeat); // 12 (an octave) or less
 
