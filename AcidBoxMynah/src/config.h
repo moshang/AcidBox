@@ -12,7 +12,7 @@
 //#define TEST_POTS               // experimental interactivity with potentiometers connected to POT_PINS[] defined below
 
 //#define USE_INTERNAL_DAC      // use this for testing, SOUND QUALITY SACRIFICED: NOISY 8BIT STEREO
-//#define NO_PSRAM              // if you don't have PSRAM on your board, then use this define, but REVERB TO BE SACRIFICED, ONE SMALL DRUM KIT SAMPLES USED 
+#define NO_PSRAM              // if you don't have PSRAM on your board, then use this define, but REVERB TO BE SACRIFICED, ONE SMALL DRUM KIT SAMPLES USED 
 
 //#define LOLIN_RGB               // Flashes the LOLIN S3 built-in RGB-LED
 
@@ -32,9 +32,9 @@
 
 #define POT_NUM 3
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
-#define I2S_BCLK_PIN    5       // I2S BIT CLOCK pin (BCL BCK CLK)
+#define I2S_BCLK_PIN    6       // I2S BIT CLOCK pin (BCL BCK CLK)
 #define I2S_WCLK_PIN    7       // I2S WORD CLOCK pin (WCK WCL LCK)
-#define I2S_DOUT_PIN    6       // to I2S DATA IN pin (DIN D DAT)
+#define I2S_DOUT_PIN    8       // to I2S DATA IN pin (DIN D DAT)
 const uint8_t POT_PINS[POT_NUM] = {15, 16, 17};
 #elif defined(CONFIG_IDF_TARGET_ESP32)
 #define I2S_BCLK_PIN    5       // I2S BIT CLOCK pin (BCL BCK CLK)

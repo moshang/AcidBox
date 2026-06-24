@@ -117,9 +117,12 @@ void Sampler::Init() {
 
   size_t toRead = 512, oldPointer = 0, buffPointer = 0;
 
+  Serial.println("  Mounting LittleFS...");
   if ( !LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)) {
-    DEBUG("LittleFS Mount Failed");
-    return;
+    Serial.println("  LittleFS Mount Failed - will use embedded samples only");
+    // Don't return - continue with embedded samples from samples.h
+  } else {
+    Serial.println("  LittleFS mounted successfully");
   }
 #ifdef NO_PSRAM
   String myDir = "/" + (String)progNumber + "/";
@@ -134,8 +137,9 @@ void Sampler::Init() {
   sampleInfoCount = 0;
   ScanContents(LittleFS, myDir.c_str() , 5);
   if (sampleInfoCount<5) {
-    CreateDefaultSamples(LittleFS);
-    ScanContents(LittleFS, myDir.c_str() , 5);
+    Serial.println("  Less than 5 samples found");
+    // Only try to create defaults if LittleFS is actually mounted
+    // We can't create files on an unmounted filesystem
   }
   repeat = min((uint8_t)sampleInfoCount , repeat); // 12 (an octave) or less
 

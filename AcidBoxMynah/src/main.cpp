@@ -30,6 +30,7 @@
 #include "synthvoice.h"
 #include "sampler.h"
 #include <Wire.h>
+#include "soc/rtc_cntl_reg.h"
 
 
 // lookuptables
@@ -213,13 +214,25 @@ static void IRAM_ATTR audio_task2(void *userData) {
 
 void setup(void) {
 
-#ifdef DEBUG_ON
-#ifndef MIDI_VIA_SERIAL
-  DEBUG_PORT.begin(115200);
-#endif
-#endif
+  // ---------- BROWNOUT DETECTOR: disabled ----------
+  // Prevents false brownout resets from transient current spikes
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
   btStop(); // we don't want bluetooth to consume our precious cpu time 
+
+  Serial.begin(115200);
+  Serial.setTimeout(100);
+  
+  // Wait for Serial connection (max 3 seconds)
+  unsigned long startWait = millis();
+  while (!Serial && (millis() - startWait < 3000)) {
+    delay(10);
+  }
+  delay(200);
+  
+  Serial.println("=================================");
+  Serial.println("AcidBox Mynah starting...");
+  Serial.println("=================================");
 
   MidiInit(); // init midi input and handling of midi events
 
@@ -233,13 +246,19 @@ void setup(void) {
 
   for (int i = 0; i < POT_NUM; i++) pinMode( POT_PINS[i] , INPUT);
 
+  Serial.println("Initializing Synth1...");
   Synth1.Init();
+  Serial.println("Initializing Synth2...");
   Synth2.Init();
+  Serial.println("Initializing Drums...");
   Drums.Init();
 #ifndef NO_PSRAM
+  Serial.println("Initializing Reverb...");
   Reverb.Init();
 #endif
+  Serial.println("Initializing Delay...");
   Delay.Init();
+  Serial.println("Initializing Compressor...");
   Comp.Init(SAMPLE_RATE);
 #ifdef JUKEBOX
   init_midi(); // AcidBanger function
@@ -257,13 +276,16 @@ void setup(void) {
     mix_buf_r[current_out_buf][i] = 0.0f;
   }
 
+  Serial.println("Initializing I2S...");
   i2sInit();
+  Serial.println("I2S initialized");
   // i2s_write(i2s_num, out_buf[current_out_buf]._signed, sizeof(out_buf[current_out_buf]._signed), &bytes_written, portMAX_DELAY);
 
   //xTaskCreatePinnedToCore( audio_task1, "SynthTask1", 8000, NULL, (1 | portPRIVILEGE_BIT), &SynthTask1, 0 );
   //xTaskCreatePinnedToCore( audio_task2, "SynthTask2", 8000, NULL, (1 | portPRIVILEGE_BIT), &SynthTask2, 1 );
-  xTaskCreatePinnedToCore( audio_task1, "SynthTask1", 5000, NULL, 1, &SynthTask1, 0 );
-  xTaskCreatePinnedToCore( audio_task2, "SynthTask2", 5000, NULL, 1, &SynthTask2, 1 );
+  Serial.println("Creating audio tasks...");
+  xTaskCreatePinnedToCore( audio_task1, "SynthTask1", 8192, NULL, 1, &SynthTask1, 0 );
+  xTaskCreatePinnedToCore( audio_task2, "SynthTask2", 8192, NULL, 1, &SynthTask2, 1 );
 
   // somehow we should allow tasks to run
   xTaskNotifyGive(SynthTask1);
@@ -287,6 +309,10 @@ void setup(void) {
   timerAttachInterrupt(timer2, &onTimer2);  // Attach callback
   timerAlarm(timer2, 200000, true, 0);          // 200ms, autoreload
 #endif
+
+  Serial.println("=================================");
+  Serial.println("Setup complete!");
+  Serial.println("=================================");
 }
 
 static uint32_t last_ms = micros();
