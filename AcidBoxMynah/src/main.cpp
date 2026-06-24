@@ -234,6 +234,11 @@ void setup(void) {
   Serial.println("AcidBox Mynah starting...");
   Serial.println("=================================");
 
+  // ---------- OLED SPLASH ----------
+  Serial.println("Initializing OLED...");
+  oledInit();
+  Serial.println("✓ OLED initialized");
+
   MidiInit(); // init midi input and handling of midi events
 
   /*

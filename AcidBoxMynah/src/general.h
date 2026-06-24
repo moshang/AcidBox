@@ -18,6 +18,9 @@ void synth1_generate();
 void synth2_generate();
 void IRAM_ATTR mixer();
 
+// OLED / Display
+void oledInit();
+
 // Other functions defined in various compilation units
 void i2sInit();
 void i2sDeinit();
