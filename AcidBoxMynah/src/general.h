@@ -5,6 +5,8 @@
 #include "config.h"
 #include "midi_config.h"
 
+#include <Adafruit_NeoPixel.h>
+
 // Forward declare the classes so we can use pointers/references
 class SynthVoice;
 class Sampler;
@@ -36,6 +38,29 @@ void midi_send_noteoff(uint8_t chan, uint8_t note);
 void handleNoteOn(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity);
 void handleNoteOff(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity);
 void handleCC(uint8_t inChannel, uint8_t cc_number, uint8_t cc_value);
+
+// ---- MYNAH HARDWARE FUNCTION DECLARATIONS ----
+void neopixelInit();
+void initShiftRegister();
+uint32_t readShiftRegister();
+void updateButtons();
+bool isButtonPressed(uint8_t buttonNum);
+bool isButtonJustPressed(uint8_t buttonNum);
+bool isButtonJustReleased(uint8_t buttonNum);
+void processButtons();
+void printButtonStates();
+void updatePot();
+void handlePot(uint16_t potVal);
+void updateLEDS();
+void uiCoreTask(void* parameter);
+
+// ---- MYNAH HARDWARE EXTERN GLOBALS ----
+extern Adafruit_NeoPixel strip;
+extern volatile uint32_t buttonStates;
+extern volatile uint32_t lastButtonStates;
+extern bool anyStepButtonHeld;
+extern bool sdCardAvailable;
+extern volatile bool ledsDirty;
 
 // Shared instances and variables
 extern Sampler Drums;

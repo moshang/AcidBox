@@ -31,6 +31,10 @@
 #include "sampler.h"
 #include <Wire.h>
 #include "soc/rtc_cntl_reg.h"
+#include <Adafruit_NeoPixel.h>
+#include <FS.h>
+#include <SD_MMC.h>
+#include <string.h>
 
 
 // lookuptables
@@ -56,6 +60,13 @@ uint32_t  last_reset = 0;
 float     param[POT_NUM];
 uint8_t    ctrl_hold_notes;
 
+// ---- MYNAH HARDWARE GLOBALS ----
+Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+volatile uint32_t buttonStates = 0;
+volatile uint32_t lastButtonStates = 0;
+bool anyStepButtonHeld = false;
+bool sdCardAvailable = false;
+volatile bool ledsDirty = false;
 
 // Audio buffers of all kinds
 volatile uint8_t current_gen_buf = 0; // set of buffers for generation
@@ -78,6 +89,7 @@ volatile float dly_k1, dly_k2, dly_k3;
 // tasks for Core0 and Core1
 TaskHandle_t SynthTask1;
 TaskHandle_t SynthTask2;
+TaskHandle_t uiTaskHandle = NULL;
 
 // 303-like synths
 SynthVoice Synth1(0); // instance 0 to recognize from the inside
@@ -194,7 +206,7 @@ static void IRAM_ATTR audio_task2(void *userData) {
 #ifdef TEST_POTS      
        readPots();
 #endif
-       
+        
 #ifdef DEBUG_TIMING
         DEBF ("synt1=%dus synt2=%dus drums=%dus mixer=%dus DMA_BUF=%dus\r\n" , s1T, s2T, drT, fxT, DMA_BUF_TIME);
         //    DEBF ("TaskCore0=%dus TaskCore1=%dus DMA_BUF=%dus\r\n" , c0T , c1T , DMA_BUF_TIME);
@@ -239,13 +251,39 @@ void setup(void) {
   oledInit();
   Serial.println("✓ OLED initialized");
 
-  MidiInit(); // init midi input and handling of midi events
+  // ---------- NEOPIXEL INIT ----------
+  Serial.println("Initializing NeoPixel...");
+  neopixelInit();
+  Serial.println("✓ NeoPixel initialized");
 
-  /*
-    for (int i = 0; i < GPIO_BUTTONS; i++) {
-    pinMode(buttonGPIOs[i], INPUT_PULLDOWN);
-    }
-  */
+  // ---------- BUTTONS (Shift Register) ----------
+  Serial.println("Initializing buttons...");
+  initShiftRegister();
+  Serial.println("✓ Buttons initialized");
+
+  // ---------- SD CARD INIT ----------
+  Serial.println("Initializing SD Card (SDMMC 1-bit mode)...");
+  SD_MMC.setPins(SD_CLK_PIN, SD_CMD_PIN, SD_D0_PIN);
+  if (!SD_MMC.begin("/sdcard", true))
+  {
+    Serial.println("❌ SD Card Mount Failed!");
+    Serial.println("   Check:");
+    Serial.println("   - SD card is inserted");
+    Serial.println("   - SD card is formatted (FAT32)");
+    Serial.println("   - Wiring: CLK=18, CMD=17, D0=16 (SDMMC mode)");
+    sdCardAvailable = false;
+  }
+  else
+  {
+    Serial.println("✓ SD Card Initialized via SDMMC (High Speed)");
+    sdCardAvailable = true;
+  }
+
+  if (!sdCardAvailable) {
+    Serial.println("⚠️  SD card not available - samples cannot be loaded from SD");
+  }
+
+  MidiInit(); // init midi input and handling of midi events
 
   buildTables();
 
@@ -292,6 +330,20 @@ void setup(void) {
   xTaskCreatePinnedToCore( audio_task1, "SynthTask1", 8192, NULL, 1, &SynthTask1, 0 );
   xTaskCreatePinnedToCore( audio_task2, "SynthTask2", 8192, NULL, 1, &SynthTask2, 1 );
 
+  // ---- UI TASK ON CORE 0 ----
+  // Separate UI task for button/pot/neopixel polling on core 0 (same core as SynthTask1)
+  Serial.println("Creating UI task on Core 0...");
+  xTaskCreatePinnedToCore(
+      uiCoreTask,       // Task function
+      "UI_Core_Task",   // Task name
+      4096,             // Stack size
+      NULL,             // Parameters
+      0,                // Priority (lower than SynthTask1)
+      &uiTaskHandle,    // Task handle
+      0                 // Core 0
+  );
+  Serial.println("✓ UI task created on Core 0");
+
   // somehow we should allow tasks to run
   xTaskNotifyGive(SynthTask1);
   //  xTaskNotifyGive(SynthTask2);
@@ -327,12 +379,63 @@ static uint32_t last_ms = micros();
 */
 
 void loop() { // default loopTask running on the Core1
-  // you can still place some of your code here
-  // or   vTaskDelete(NULL);
-  
-  // processButtons();
-  regular_checks();    
-  taskYIELD(); // this can wait
+  // The UI task on Core 0 handles buttons, pots, and neopixel updates.
+  // The audio tasks handle synth/drums/mixer/i2s.
+  // Core 1's loop just runs regular checks (MIDI, jukebox tick).
+  regular_checks();
+  taskYIELD();
+}
+
+/* 
+ *  UI CORE 0 TASK - Button, Pot, and NeoPixel polling *****************************************************************************
+*/
+void uiCoreTask(void* parameter) {
+  uint8_t phase = 0;
+  while (true) {
+    switch (phase) {
+      case 0: updateButtons(); break;
+      case 1: processButtons(); break;
+      case 2: updatePot(); break;
+      //case 3: updateLEDS(); break;
+    }
+    phase = (phase + 1) % 4;
+    vTaskDelay(pdMS_TO_TICKS(5));
+  }
+}
+
+/* 
+ *  MYNAH Hardware Functions *****************************************************************************************************************************
+*/
+
+void neopixelInit()
+{
+  strip.begin();
+  strip.setBrightness(20);
+  strip.clear();
+  strip.show();
+  Serial.println("NeoPixel initialized (16 LEDs)");
+}
+
+void updateLEDS() {
+  if (!ledsDirty) return;
+  // Simple NeoPixel display: show which step buttons are pressed
+  // Step buttons map to bits 0-15 of buttonStates
+  strip.clear();
+
+  // Map the 16 step buttons to the 16 LEDs
+  for (int i = 0; i < 16; i++) {
+    if ((buttonStates >> i) & 0x01) {
+      // Step button pressed - show white
+      strip.setPixelColor(i, 255, 255, 255);
+    } else {
+      // Step button not pressed - off
+      strip.setPixelColor(i, 0, 0, 0);
+    }
+  }
+
+  strip.setBrightness(20);
+  strip.show();
+  ledsDirty = false;
 }
 
 /* 

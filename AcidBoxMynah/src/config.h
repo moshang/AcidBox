@@ -44,6 +44,36 @@ const uint8_t POT_PINS[POT_NUM] = {15, 16, 17};
 const uint8_t POT_PINS[POT_NUM] = {34, 35, 36};
 #endif
 
+// ========================================
+// MYNAH HARDWARE PIN ASSIGNMENTS
+// Shared hardware platform: ESP32-S3 SuperMini
+// ========================================
+
+// NeoPixel (16-LED ring)
+#define LED_PIN   10
+#define LED_COUNT 16
+
+// Potentiometer (single, for UI parameter control)
+#define POT_PIN         1
+#define POT_THRESHOLD   8
+
+// 74HC165 Shift Register Pins (24 tactile switches)
+#define SR_DATA_PIN  3
+#define SR_CLOCK_PIN 5
+#define SR_LATCH_PIN 4
+
+// Button Management
+#define NUM_BUTTONS 24
+
+// SD CARD PINS (SDMMC 1-bit mode via GPIO Matrix)
+#define SD_CLK_PIN  18  // SDMMC CLK
+#define SD_CMD_PIN  17  // SDMMC CMD
+#define SD_D0_PIN   16  // SDMMC D0
+
+// OLED I2C PINS
+#define OLED_SCL_PIN 11
+#define OLED_SDA_PIN 12
+
 
 // float bpm = 130.0f; // Must not be defined in header
 

@@ -12,7 +12,7 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R2, U8X8_PIN_NONE);
 // Call this as early as possible in setup().
 void oledInit()
 {
-    Wire.begin(12, 11);
+    Wire.begin(OLED_SDA_PIN, OLED_SCL_PIN);
 
     u8g2.begin();
     u8g2.clearBuffer();
