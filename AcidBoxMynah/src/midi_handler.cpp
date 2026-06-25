@@ -105,6 +105,23 @@ void handleNoteOn(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity) {
   if (inChannel == DRUM_MIDI_CHAN )         {Drums.NoteOn(inNote, inVelocity);}
   else if (inChannel == SYNTH1_MIDI_CHAN )  {Synth1.on_midi_noteON(inNote, inVelocity);}
   else if (inChannel == SYNTH2_MIDI_CHAN )  {Synth2.on_midi_noteON(inNote, inVelocity);}
+
+#ifdef JUKEBOX
+  // Hook neopixel visualizer on note events
+  {
+    // Determine voice index: 0=synth1, 1=synth2, 2=drums
+    uint8_t voice = 2; // drums by default
+    if (inChannel == SYNTH1_MIDI_CHAN) voice = 0;
+    else if (inChannel == SYNTH2_MIDI_CHAN) voice = 1;
+
+    // Derive accent from velocity >= 80
+    bool accent = (inVelocity >= 80);
+    // Read slide flag set by AcidBanger's instr_noteon_raw, then reset it
+    bool slide = visualizerCurrentSlide;
+    visualizerCurrentSlide = false;
+    visualizerNoteOn(voice, inNote, accent, slide);
+  }
+#endif
 }
 
 void handleNoteOff(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity) {
@@ -112,6 +129,14 @@ void handleNoteOff(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity) {
   else if (inChannel == SYNTH1_MIDI_CHAN )  {Synth1.on_midi_noteOFF(inNote, inVelocity);}
   else if (inChannel == SYNTH2_MIDI_CHAN )  {Synth2.on_midi_noteOFF(inNote, inVelocity);}
 
+#ifdef JUKEBOX
+  {
+    uint8_t voice = 2;
+    if (inChannel == SYNTH1_MIDI_CHAN) voice = 0;
+    else if (inChannel == SYNTH2_MIDI_CHAN) voice = 1;
+    visualizerNoteOff(voice, inNote);
+  }
+#endif
 }
 
 void handleCC(uint8_t inChannel, uint8_t cc_number, uint8_t cc_value) {

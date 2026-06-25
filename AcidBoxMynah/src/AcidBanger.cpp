@@ -417,6 +417,9 @@ static void instr_noteon_raw(byte instr, byte note, byte vol, byte do_glide) {
   if (ins->playing_note != 0) {
     if (do_glide && !ins->is_drum) {
       // Implement glide by playing two notes at once. Also known as "fingered glide"
+#ifdef JUKEBOX
+      visualizerCurrentSlide = true;  // tell visualizer this note has slide
+#endif
       if (ins->noteon != NULL)
         ins->noteon(ins->midi_channel, note, vol);
       instr_noteoff(instr);
@@ -425,6 +428,9 @@ static void instr_noteon_raw(byte instr, byte note, byte vol, byte do_glide) {
     }
     instr_noteoff(instr);
   }
+#ifdef JUKEBOX
+  visualizerCurrentSlide = do_glide;
+#endif
   if (ins->noteon != NULL)
     ins->noteon(ins->midi_channel, note, vol);
   ins->playing_note = note;
@@ -1153,6 +1159,18 @@ void do_midi_stop() {
   instr_allnotesoff();
   send_midi_stop();
   midi_playing = 0;
+  // Clear neopixels when sequencer stops
+  strip.ClearTo(RgbColor(0, 0, 0));
+  strip.Show();
+  ledsDirty = true;
+}
+
+void midi_toggle_play() {
+  if (midi_playing) {
+    do_midi_stop();
+  } else {
+    do_midi_start();
+  }
 }
 
 /*

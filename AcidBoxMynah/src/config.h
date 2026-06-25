@@ -65,6 +65,34 @@ const uint8_t POT_PINS[POT_NUM] = {34, 35, 36};
 // Button Management
 #define NUM_BUTTONS 24
 
+// MYNAH Button Number Assignments (0-based, matching shift register bit positions)
+// 16 step buttons (0-15): A1=0, A2=1, ... A8=7, B1=8, ... B8=15
+#define BTN_STEP_1  0
+#define BTN_STEP_2  1
+#define BTN_STEP_3  2
+#define BTN_STEP_4  3
+#define BTN_STEP_5  4
+#define BTN_STEP_6  5
+#define BTN_STEP_7  6
+#define BTN_STEP_8  7
+#define BTN_STEP_9  8
+#define BTN_STEP_10 9
+#define BTN_STEP_11 10
+#define BTN_STEP_12 11
+#define BTN_STEP_13 12
+#define BTN_STEP_14 13
+#define BTN_STEP_15 14
+#define BTN_STEP_16 15
+// Function buttons (16-23): F1=16, F2=17, ... F8=23
+#define BTN_F1 16
+#define BTN_F2 17
+#define BTN_F3 18
+#define BTN_F4 19
+#define BTN_F5 20
+#define BTN_F6 21
+#define BTN_F7 22
+#define BTN_F8 23
+
 // SD CARD PINS (SDMMC 1-bit mode via GPIO Matrix)
 #define SD_CLK_PIN  18  // SDMMC CLK
 #define SD_CMD_PIN  17  // SDMMC CMD
@@ -199,4 +227,4 @@ extern const float tuning[128];
 inline float fast_shape(float x);
 static __attribute__((always_inline)) inline float one_div(float a);
 
-#endif
+#endif // CONFIG_H

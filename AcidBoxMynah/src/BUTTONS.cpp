@@ -88,8 +88,10 @@ void updateButtons() {
 
 // ---------- PROCESS BUTTON EVENTS ----------
 void processButtons() {
-	// Stub: will be expanded with button handling logic later.
-	// For now, just print button states for debugging.
+	// F8 release: toggle sequencer start/stop
+	if (isButtonJustReleased(BTN_F8)) {
+		midi_toggle_play();
+	}
 }
 
 // ---------- DEBUG: PRINT BUTTON STATES ----------

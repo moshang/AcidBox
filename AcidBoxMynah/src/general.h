@@ -5,7 +5,7 @@
 #include "config.h"
 #include "midi_config.h"
 
-#include <Adafruit_NeoPixel.h>
+#include <NeoPixelBus.h>
 
 // Forward declare the classes so we can use pointers/references
 class SynthVoice;
@@ -48,6 +48,7 @@ bool isButtonPressed(uint8_t buttonNum);
 bool isButtonJustPressed(uint8_t buttonNum);
 bool isButtonJustReleased(uint8_t buttonNum);
 void processButtons();
+void midi_toggle_play();
 void printButtonStates();
 void updatePot();
 void handlePot(uint16_t potVal);
@@ -55,7 +56,8 @@ void updateLEDS();
 void uiCoreTask(void* parameter);
 
 // ---- MYNAH HARDWARE EXTERN GLOBALS ----
-extern Adafruit_NeoPixel strip;
+// NeoPixelBus strip on GPIO 10, GRB (WS2812/SK6812), 800Kbps via RMT (async, non-blocking)
+extern NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip;
 extern volatile uint32_t buttonStates;
 extern volatile uint32_t lastButtonStates;
 extern bool anyStepButtonHeld;
@@ -111,6 +113,21 @@ extern float midi_phase_steps[128];
 extern float midi_tbl_steps[128];
 extern const float tuning[128];
 
+// ---- NEOPIXEL VISUALIZER (Jukebox Mode) ----
+struct LedState {
+  float brightness;
+  float decay_rate;
+  float ramp_target;   // >0 = ramping toward this brightness target (for slide + accent effects)
+  float ramp_step;     // per-tick increment toward ramp_target
+  RgbColor base_color;
+  RgbColor current_color;
+};
+extern LedState ledStates[16];
+extern bool visualizerCurrentSlide;
+void visualizerTick();
+void visualizerNoteOn(uint8_t voice, uint8_t note, bool accent, bool slide);
+void visualizerNoteOff(uint8_t voice, uint8_t note);
+
 // Utility math and lookup functions defined as inline
 inline float fclamp(float in, float min, float max) {
     return fmin(fmax(in, min), max);
@@ -124,7 +141,7 @@ inline float amp2dB(float amp) {
     return 8.6858896380650365530225783783321f * logf(amp);
 }
 
-inline float lookupTable(float (&table)[TABLE_SIZE+1], float index ) { // lookup value in a table by float index, using linear interpolation
+inline float lookupTable(float (&table)[TABLE_SIZE+1], float index ) {
   static float v1, v2, res;
   static int32_t i;
   static float f;
@@ -137,7 +154,7 @@ inline float lookupTable(float (&table)[TABLE_SIZE+1], float index ) { // lookup
 }
 
 inline float bilinearLookup(float (&table)[16][16], float x, float y) {
-  static float kmap = 0.1181f; // map from 0-127 to 0-14.99
+  static float kmap = 0.1181f;
   int32_t i,j;
   float fi,fj;
   float v1,v2,v3,v4;
@@ -164,12 +181,10 @@ inline float fast_shape(float x){
       x = -x;
       sign = -1.0f;
     }
-   
     if (x>=4.95f) {
-      return sign; // tanh(x) ~= 1, when |x| > 4
+      return sign;
     }
-
-    return  sign * lookupTable(shaper_tbl, (x*SHAPER_LOOKUP_COEF)); // lookup table contains tanh(x), 0 <= x <= 5
+    return sign * lookupTable(shaper_tbl, (x*SHAPER_LOOKUP_COEF));
 }
 
 inline float fast_sin(const float x) {
@@ -185,11 +200,10 @@ inline float fast_cos(const float x) {
 }
 
 inline void fast_sincos(const float x, float* sinRes, float* cosRes){
-	*sinRes = fast_sin(x);
-	*cosRes = fast_cos(x);
+    *sinRes = fast_sin(x);
+    *cosRes = fast_cos(x);
 }
 
-// reciprocal asm injection for xtensa LX6 FPU
 static __attribute__((always_inline)) inline float one_div(float a) {
     float result;
     asm volatile (
@@ -210,21 +224,14 @@ static __attribute__((always_inline)) inline float one_div(float a) {
 }
 
 inline float linToLin(float in, float inMin, float inMax, float outMin, float outMax){
-  // map input to the range 0.0...1.0:
   float tmp = (in-inMin) * one_div(inMax-inMin);
-
-  // map the tmp-value to the range outMin...outMax:
   tmp *= (outMax-outMin);
   tmp += outMin;
-
   return tmp;
 }
 
 inline float linToExp(float in, float inMin, float inMax, float outMin, float outMax){
-  // map input to the range 0.0...1.0:
   float tmp = (in-inMin) * one_div(inMax-inMin);
-
-  // map the tmp-value exponentially to the range outMin...outMax:
   return outMin * expf( tmp*(logf(outMax * one_div(outMin))) );
 }
 

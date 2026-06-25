@@ -31,11 +31,13 @@
 #include "sampler.h"
 #include <Wire.h>
 #include "soc/rtc_cntl_reg.h"
-#include <Adafruit_NeoPixel.h>
 #include <FS.h>
 #include <SD_MMC.h>
 #include <string.h>
 
+// NeoPixelBus uses the ESP32-S3 hardware RMT peripheral for non-blocking
+// asynchronous transmission — the CPU is NOT stalled while pixels are shifted out.
+#include <NeoPixelBus.h>
 
 // lookuptables
 float midi_pitches[128];
@@ -61,12 +63,14 @@ float     param[POT_NUM];
 uint8_t    ctrl_hold_notes;
 
 // ---- MYNAH HARDWARE GLOBALS ----
-Adafruit_NeoPixel strip(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+// NeoPixelBus: 16-LED strip on GPIO 10, hardware RMT (non-blocking async)
+// Neo800KbpsMethod transmits via RMT peripheral — CPU is not stalled.
+NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(LED_COUNT, LED_PIN);
 volatile uint32_t buttonStates = 0;
 volatile uint32_t lastButtonStates = 0;
 bool anyStepButtonHeld = false;
 bool sdCardAvailable = false;
-volatile bool ledsDirty = false;
+volatile bool ledsDirty = true;
 
 // Audio buffers of all kinds
 volatile uint8_t current_gen_buf = 0; // set of buffers for generation
@@ -396,45 +400,259 @@ void uiCoreTask(void* parameter) {
       case 0: updateButtons(); break;
       case 1: processButtons(); break;
       case 2: updatePot(); break;
-      //case 3: updateLEDS(); break;
+      case 3: updateLEDS(); break;
     }
     phase = (phase + 1) % 4;
     vTaskDelay(pdMS_TO_TICKS(5));
   }
 }
 
+// ---- NEOPIXEL VISUALIZER STATE & FUNCTIONS ----
+// 16 LED states, one per physical LED on the ring
+LedState ledStates[16];
+bool visualizerCurrentSlide = false;
+
+// Colour mapping per voice (RGB values 0-255)
+static const RgbColor COLOR_SYNTH1(0, 200, 220);   // cyan
+static const RgbColor COLOR_SYNTH1_SAW(0, 140, 200); // deeper cyan for saw
+static const RgbColor COLOR_SYNTH2(220, 0, 200);   // magenta
+static const RgbColor COLOR_SYNTH2_SAW(180, 0, 140); // deeper magenta for saw
+static const RgbColor COLOR_DRUM_KICK(255, 255, 255);   // white
+static const RgbColor COLOR_DRUM_SNARE(255, 220, 0);    // yellow
+static const RgbColor COLOR_DRUM_CH(0, 255, 60);        // green
+static const RgbColor COLOR_DRUM_OH(0, 220, 40);        // green (slightly dimmer)
+static const RgbColor COLOR_DRUM_PERC(255, 120, 0);     // orange
+
+// Arc indices: synth1 LEDs 0-5, synth2 LEDs 6-10, drums LEDs 11-15
+#define ARC_SYNTH1_START 0
+#define ARC_SYNTH1_END   5
+#define ARC_SYNTH2_START 6
+#define ARC_SYNTH2_END   10
+#define ARC_DRUMS_START  11
+#define ARC_DRUMS_END    15
+
+// Map voice (0=synth1, 1=synth2) to an arc's LED range
+static inline void getSynthArc(uint8_t voice, uint8_t* start, uint8_t* end) {
+  if (voice == 0) { *start = ARC_SYNTH1_START; *end = ARC_SYNTH1_END; }
+  else            { *start = ARC_SYNTH2_START; *end = ARC_SYNTH2_END; }
+}
+
+void initVisualizer() {
+  for (int i = 0; i < 16; i++) {
+    ledStates[i].brightness = 0.05f; // dim baseline
+    ledStates[i].decay_rate = 0.92f;
+    ledStates[i].ramp_target = -1.0f; // no ramp
+    ledStates[i].ramp_step = 0.0f;
+    ledStates[i].base_color = RgbColor(0, 0, 0);
+    ledStates[i].current_color = RgbColor(0, 0, 0);
+  }
+}
+
+void visualizerTick() {
+  for (int i = 0; i < 16; i++) {
+    LedState* ls = &ledStates[i];
+
+    // Handle brightness ramping (for slide interpolation and accent boost)
+    if (ls->ramp_target >= 0.0f) {
+      if (ls->brightness < ls->ramp_target) {
+        ls->brightness += ls->ramp_step;
+        if (ls->brightness > ls->ramp_target) ls->brightness = ls->ramp_target;
+      } else if (ls->brightness > ls->ramp_target) {
+        ls->brightness -= ls->ramp_step;
+        if (ls->brightness < ls->ramp_target) ls->brightness = ls->ramp_target;
+      } else {
+        ls->ramp_target = -1.0f; // ramp complete
+      }
+    } else {
+      // Normal decay
+      ls->brightness *= ls->decay_rate;
+    }
+
+    // Clamp to dim baseline — never go below 5% so ring is always visible
+    if (ls->brightness < 0.05f && ls->brightness > 0.0f) {
+      ls->brightness = 0.05f;
+    }
+
+    // Apply brightness to base colour
+    float bb = ls->brightness;
+    bb = (bb > 1.0f) ? 1.0f : bb;
+    ls->current_color = RgbColor(
+      (uint8_t)((float)ls->base_color.R * bb),
+      (uint8_t)((float)ls->base_color.G * bb),
+      (uint8_t)((float)ls->base_color.B * bb)
+    );
+
+    strip.SetPixelColor(i, ls->current_color);
+  }
+  ledsDirty = true;
+}
+
+// Map a MIDI note (range ~24–84) to an LED index within an arc [start..end]
+static inline uint8_t noteToLedInArc(uint8_t note, uint8_t arcStart, uint8_t arcEnd) {
+  uint8_t arcLen = arcEnd - arcStart + 1;
+  // Clamp note to reasonable range
+  if (note < 24) note = 24;
+  if (note > 96) note = 96;
+  // Map 24-84 range to 0..arcLen-1
+  uint8_t idx = (uint8_t)(((float)(note - 24) / 60.0f) * (float)arcLen);
+  if (idx >= arcLen) idx = arcLen - 1;
+  return arcStart + idx;
+}
+
+void visualizerNoteOn(uint8_t voice, uint8_t note, bool accent, bool slide) {
+    if (voice < 2) {
+    // Synth1 or Synth2
+    uint8_t arcStart, arcEnd;
+    getSynthArc(voice, &arcStart, &arcEnd);
+    uint8_t led = noteToLedInArc(note, arcStart, arcEnd);
+    LedState* ls = &ledStates[led];
+
+    // Determine base colour — could be driven by waveform (saw vs square) later
+    // For now use the main synth colour; the AcidBanger API could pass waveform if needed.
+    RgbColor baseColor = (voice == 0) ? COLOR_SYNTH1 : COLOR_SYNTH2;
+    ls->base_color = baseColor;
+
+    float targetBrightness = accent ? 1.0f : 0.7f;
+
+    if (slide) {
+      // Slide: ramp brightness from current to target over ~5 UI ticks
+      visualizerCurrentSlide = true;
+      ls->ramp_target = targetBrightness;
+      float diff = targetBrightness - ls->brightness;
+      ls->ramp_step = diff / 5.0f;
+      if (ls->ramp_step < 0.0f) ls->ramp_step = -ls->ramp_step;
+      ls->decay_rate = 0.97f; // slower decay during slide
+    } else {
+      // Immediate set
+      ls->ramp_target = -1.0f;
+      ls->brightness = targetBrightness;
+      ls->decay_rate = 0.92f; // normal decay
+    }
+
+    // Accent boost: briefly boost all LEDs in the arc
+    if (accent) {
+      for (uint8_t i = arcStart; i <= arcEnd; i++) {
+        if (i != led) {
+          LedState* other = &ledStates[i];
+          // Temporary +30% boost for one tick via ramp (decay will handle rest)
+          other->ramp_target = other->brightness * 1.3f;
+          if (other->ramp_target > 1.0f) other->ramp_target = 1.0f;
+        }
+      }
+    }
+  } else {
+    // Drums (voice 2): 5 drum voices mapped to LEDs 11..15
+    // The MIDI note = current_drumkit + drum_instrument_index.
+    // Extract the instrument index: drum_instrument = note % 12
+    // Drum instrument numbers: 0=kick, 1=snare, 6=CH, 7=OH, 9=crash, 11=perc
+    uint8_t drumInstr = note % 12;
+    uint8_t led;
+    uint8_t drumType;
+
+    // Map instrument to LED 11-15
+    // Instrument 0 (KICK) → LED 11
+    // Instrument 1 (SNARE) → LED 12
+    // Instrument 6 (CH)    → LED 13
+    // Instrument 7 (OH)    → LED 14
+    // Instrument 9 (CRASH) or 11 (PERC) → LED 15
+    if (drumInstr == 0) {
+      led = ARC_DRUMS_START;      // 11
+      drumType = 0;
+    } else if (drumInstr == 1) {
+      led = ARC_DRUMS_START + 1;  // 12
+      drumType = 1;
+    } else if (drumInstr == 6) {
+      led = ARC_DRUMS_START + 2;  // 13
+      drumType = 2;
+    } else if (drumInstr == 7) {
+      led = ARC_DRUMS_START + 3;  // 14
+      drumType = 3;
+    } else {
+      led = ARC_DRUMS_START + 4;  // 15 — perc/crash
+      drumType = 4;
+    }
+
+    LedState* ls = &ledStates[led];
+    ls->brightness = 1.0f; // full flash on hit
+    ls->ramp_target = -1.0f;
+
+    // Assign colour and decay based on drum type
+    switch (drumType) {
+      case 0: // Kick
+        ls->base_color = COLOR_DRUM_KICK;
+        ls->decay_rate = 0.94f; // slowest decay
+        break;
+      case 1: // Snare
+        ls->base_color = COLOR_DRUM_SNARE;
+        ls->decay_rate = 0.92f;
+        break;
+      case 2: // Closed hat
+        ls->base_color = COLOR_DRUM_CH;
+        ls->decay_rate = 0.88f; // fastest decay
+        break;
+      case 3: // Open hat
+        ls->base_color = COLOR_DRUM_OH;
+        ls->decay_rate = 0.95f; // longer decay
+        break;
+      default: // Perc/crash
+        ls->base_color = COLOR_DRUM_PERC;
+        ls->decay_rate = 0.93f;
+        break;
+    }
+  }
+}
+
+void visualizerNoteOff(uint8_t voice, uint8_t note) {
+  if (voice < 2) {
+    uint8_t arcStart, arcEnd;
+    getSynthArc(voice, &arcStart, &arcEnd);
+    uint8_t led = noteToLedInArc(note, arcStart, arcEnd);
+    LedState* ls = &ledStates[led];
+    // Do not snap off — let decay handle it (mirroring synth envelope release)
+    // Just ensure ramp is disabled so normal decay takes over
+    ls->ramp_target = -1.0f;
+    ls->decay_rate = 0.92f; // ~100ms decay at 20ms ticks: 0.92^5 ≈ 0.66 (dim enough)
+  }
+}
+
 /* 
  *  MYNAH Hardware Functions *****************************************************************************************************************************
-*/
+ */
 
 void neopixelInit()
 {
-  strip.begin();
-  strip.setBrightness(20);
-  strip.clear();
-  strip.show();
-  Serial.println("NeoPixel initialized (16 LEDs)");
+  strip.Begin();
+  strip.ClearTo(RgbColor(0, 0, 0));
+  strip.Show();
+#ifdef JUKEBOX
+  initVisualizer();
+  Serial.println("NeoPixel visualizer initialized (jukebox mode)");
+#endif
+  Serial.println("NeoPixel initialized (16 LEDs, RMT async)");
 }
 
 void updateLEDS() {
   if (!ledsDirty) return;
-  // Simple NeoPixel display: show which step buttons are pressed
-  // Step buttons map to bits 0-15 of buttonStates
-  strip.clear();
 
-  // Map the 16 step buttons to the 16 LEDs
+#ifdef JUKEBOX
+  // In jukebox mode the neopixel visualizer drives the LEDs.
+  // visualizerTick decays brightnesses, applies colours, and sets ledsDirty = true
+  // for continuous animated updates on every UI tick.
+  visualizerTick();
+#else
+  // Non-jukebox mode: show button states as dim white on held keys
   for (int i = 0; i < 16; i++) {
     if ((buttonStates >> i) & 0x01) {
-      // Step button pressed - show white
-      strip.setPixelColor(i, 255, 255, 255);
+      strip.SetPixelColor(i, RgbColor(20, 20, 20));
     } else {
-      // Step button not pressed - off
-      strip.setPixelColor(i, 0, 0, 0);
+      strip.SetPixelColor(i, RgbColor(0, 0, 0));
     }
   }
+#endif
 
-  strip.setBrightness(20);
-  strip.show();
+  // Show() uses hardware RMT — it transmits in the background
+  // via the ESP32-S3 RMT peripheral without blocking the CPU.
+  strip.Show();
   ledsDirty = false;
 }
 
