@@ -2,7 +2,7 @@
 #define SAMPLER_H
 
 #include <FS.h>
-#include <LittleFS.h>
+#include <SD_MMC.h>
 #include "midi_config.h"
 #include "fx_filtercrusher.h"
 
@@ -46,8 +46,7 @@ DEBF("Select note: %d\r\n", note);
     float _sendDelay = 0.0f;
     
   private:
-    void CreateDefaultSamples(fs::FS &fs);
-    void WriteFile(fs::FS &fs, const String fname, size_t fsize, const uint8_t bytearray[] );
+    void LoadEmbeddedSamples();
     boolean is_muted[17]={ false, false,false,false,false ,false,false,false,false ,false,false,false,false ,false,false,false,false };
                   
     uint8_t volume_midi[17]     = { 127, 127,127,127,127, 127,127,127,127, 127,127,127,127, 127,127,127,127 };

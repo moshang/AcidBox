@@ -1,6 +1,7 @@
 /*
    this file includes the implementation of the sample player
-   all samples are loaded from LittleFS stored on the external flash
+   samples are loaded from SD card (SAMPLES/AcidBox/{kit}/) or
+   fall back to embedded samples in samples.h
 
    Author: Marcel Licence
 
@@ -13,50 +14,96 @@
    2022-11-27 Copych, made this a class, made it use one big PSRAM buffer for drumkit wav data
    2023-01-20 Copych, changed midi cc handling, now it affects instruments, not the sample players
    2023-03-02 Copych, preload all 3MB of samples from flash to PSRAM to be able of switching kits in realtime
-*/
+   2026-06-25 Moshang, switched from LittleFS to SD_MMC for sample loading; embedded fallback
+ */
 #include <Arduino.h>
 #include "general.h"
 #include "sampler.h"
 #include "samples.h"
 
-/* You only need to format LittleFS the first time you run a
-   test or else use the LittleFS plugin to create a partition
-   https://github.com/lorol/arduino-esp32LittleFS-plugin */
-
 //#define DEBUG_SAMPLER
-void Sampler::CreateDefaultSamples(fs::FS &fs){
-  const String path = "/0";
-  size_t toWrite = 0;
-  fs.mkdir(path);
-  WriteFile(fs, (String)(path + "/001_BD.wav"), s01_sz, s01);
-  WriteFile(fs, (String)(path + "/002_SD.wav"), s02_sz, s02);
-  WriteFile(fs, (String)(path + "/003_.wav"), s00_sz, s00);
-  WriteFile(fs, (String)(path + "/004_.wav"), s00_sz, s00);
-  WriteFile(fs, (String)(path + "/005_CB.wav"), s05_sz, s05);
-  WriteFile(fs, (String)(path + "/006_.wav"), s00_sz, s00);
-  WriteFile(fs, (String)(path + "/007_CH.wav"), s07_sz, s07);
-  WriteFile(fs, (String)(path + "/008_OH.wav"), s08_sz, s08);
-  WriteFile(fs, (String)(path + "/009_.wav"), s00_sz, s00);
-  WriteFile(fs, (String)(path + "/010_CR.wav"), s10_sz, s10);
-}
 
-void Sampler::WriteFile(fs::FS &fs, const String fname, size_t fsize, const uint8_t bytearray[] ) {
-  size_t len = fsize;
-  size_t toWrite = len;
-  size_t arrPointer = 0;
-  File f = fs.open(fname, FILE_WRITE);
-  while( len ){
-    if(len > (1UL<<15)){
-      toWrite = (1UL<<15);
+void Sampler::LoadEmbeddedSamples() {
+    size_t toRead = 0, oldPointer = 0, buffPointer = 0;
+
+    // Allocate PSRAM / RAM buffer if not already done
+#ifndef NO_PSRAM
+    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+    if (psramFound()) {
+        if (RamCache == NULL) {
+            psramInit();
+            RamCache = (uint8_t*)ps_malloc(PSRAM_SAMPLER_CACHE);
+        }
+        if (RamCache == NULL) {
+            DEBUG("FAILED TO ALLOCATE PSRAM CACHE BUFFER!");
+            sampleInfoCount = 0;
+            return;
+        } else {
+            DEBF("PSRAM BUFFER OF %d bytes ALLOCATED! EMBEDDED SAMPLES MODE!\r\n", PSRAM_SAMPLER_CACHE);
+            heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+        }
     } else {
-      toWrite = len;
+        DEBUG("STOP! Use #define NO_PSRAM option in config.h");
+        while (1) {}
     }
-    f.write(&(bytearray[arrPointer]), toWrite);
-    arrPointer += toWrite;
-    len -= toWrite;
-  }
-  DEBF("[sampler]: %s written %d bytes to flash\r\n", fname, fsize);
-  f.close();
+#else
+    DEBF("Free heap: %d\r\n", heap_caps_get_free_size(MALLOC_CAP_8BIT));
+    heap_caps_print_heap_info(MALLOC_CAP_8BIT);
+    if (RamCache == NULL) {
+        RamCache = (uint8_t*)malloc(RAM_SAMPLER_CACHE);
+    }
+    if (RamCache == NULL) {
+        DEBUG("FAILED TO ALLOCATE RAM CACHE BUFFER!");
+    } else {
+        DEBF("HEAP BUFFER of %d bytes ALLOCATED! EMBEDDED SAMPLES MODE!\r\n", RAM_SAMPLER_CACHE);
+    }
+#endif
+
+    // Build a table of embedded samples: { size, data_ptr, name }
+    struct EmbeddedSample {
+        size_t size;
+        const uint8_t* data;
+    };
+
+    EmbeddedSample embeddedSamples[] = {
+        { s01_sz, s01 },  // 001_BD.wav
+        { s02_sz, s02 },  // 002_SD.wav
+        { s00_sz, s00 },  // 003_.wav (empty)
+        { s00_sz, s00 },  // 004_.wav (empty)
+        { s05_sz, s05 },  // 005_CB.wav
+        { s00_sz, s00 },  // 006_.wav (empty)
+        { s07_sz, s07 },  // 007_CH.wav
+        { s08_sz, s08 },  // 008_OH.wav
+        { s00_sz, s00 },  // 009_.wav (empty)
+        { s10_sz, s10 },  // 010_CR.wav
+    };
+    const int embeddedCount = sizeof(embeddedSamples) / sizeof(embeddedSamples[0]);
+
+    sampleInfoCount = embeddedCount;
+
+    for (int i = 0; i < embeddedCount; i++) {
+        union wavHeader wav;
+        memcpy(&(wav.wavHdr[0]), embeddedSamples[i].data, sizeof(wav.wavHdr));
+
+        // Copy PCM data into RamCache (skip the 44-byte WAV header)
+        size_t pcmSize = embeddedSamples[i].size - sizeof(wav.wavHdr);
+        if (buffPointer + pcmSize > PSRAM_SAMPLER_CACHE) {
+            DEBF("PSRAM overflow! Truncating at sample %d\n", i);
+            sampleInfoCount = i;
+            break;
+        }
+
+        samplePlayer[i].sampleStart = buffPointer;
+        oldPointer = buffPointer;
+        memcpy(&(RamCache[buffPointer]), embeddedSamples[i].data + sizeof(wav.wavHdr), pcmSize);
+        buffPointer += pcmSize;
+
+        wav.dataSize = min((size_t)wav.dataSize, pcmSize);
+
+        samplePlayer[i].sampleRate = wav.sampleRate;
+        samplePlayer[i].sampleSize = wav.dataSize;
+        samplePlayer[i].sampleSeek = 0xFFFFFFFF;
+    }
 }
 
 void Sampler::ScanContents(fs::FS &fs, const char *dirname, uint8_t levels) {
@@ -82,7 +129,7 @@ void Sampler::ScanContents(fs::FS &fs, const char *dirname, uint8_t levels) {
       DEBUG(file.name());
 #endif
       if ( levels ) {
-        str = (String)(dirname + (String)(file.name()) + '/');
+        str = (String)(dirname + (String)"/" + (String)(file.name()));
         ScanContents(fs, str.c_str(), levels - 1);
       }
     } else {
@@ -96,9 +143,7 @@ void Sampler::ScanContents(fs::FS &fs, const char *dirname, uint8_t levels) {
 
       if ( sampleInfoCount < SAMPLECNT ) {
         str = (String)(file.name());
-       // shortInstr[ sampleInfoCount ] = str.substring(str.length() - 7, str.length() - 4);
-        str = (String)dirname + str;
-//        strncpy( samplePlayer[ sampleInfoCount ].filename, str.c_str() , 32);
+        str = (String)dirname + "/" + str;
         strncpy( filenames[ sampleInfoCount ], str.c_str() , 32);
         sampleInfoCount ++;
       }
@@ -110,62 +155,91 @@ void Sampler::ScanContents(fs::FS &fs, const char *dirname, uint8_t levels) {
 
 
 void Sampler::Init() {
- // samplePlayer = (samplePlayerS*)heap_caps_malloc( SAMPLECNT * sizeof( *samplePlayer), MALLOC_CAP_8BIT);
-  
+
   Effects.Init();
   Effects.SetBitCrusher( 0.0f );
 
-  size_t toRead = 512, oldPointer = 0, buffPointer = 0;
+  Serial.println("  Checking SD card for SAMPLES/AcidBox...");
 
-  Serial.println("  Mounting LittleFS...");
-  if ( !LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)) {
-    Serial.println("  LittleFS Mount Failed - will use embedded samples only");
-    // Don't return - continue with embedded samples from samples.h
-  } else {
-    Serial.println("  LittleFS mounted successfully");
+  // Diagnostic: list SD card root contents
+  if (SD_MMC.cardType() != CARD_NONE) {
+    Serial.println("  --- SD Card Root Directory ---");
+    File root = SD_MMC.open("/");
+    if (root && root.isDirectory()) {
+      File entry = root.openNextFile();
+      while (entry) {
+        if (entry.isDirectory()) {
+          Serial.printf("    [DIR]  %s\n", entry.name());
+        } else {
+          Serial.printf("    [FILE] %s  (%u bytes)\n", entry.name(), entry.size());
+        }
+        entry = root.openNextFile();
+      }
+      root.close();
+    } else {
+      Serial.println("  Could not open SD root directory!");
+    }
+    Serial.println("  -----------------------------");
   }
+
+  // Build the path relative to SD mount: SAMPLES/AcidBox/{progNumber}
+  // (SD_MMC.begin("/sdcard") means root is /sdcard, so open("/SAMPLES/...") resolves correctly)
+  // NOTE: Do NOT add a trailing slash to the path! The ESP32 VFS/FAT driver interprets
+  // a trailing slash as a missing filename inside the directory, causing open() to fail.
 #ifdef NO_PSRAM
-  String myDir = "/" + (String)progNumber + "/";
+  String sdKitPath = "/SAMPLES/AcidBox/" + (String)progNumber;
 #else
   #ifdef PRELOAD_ALL
-    String myDir = "/" ;
+    String sdKitPath = "/SAMPLES/AcidBox";
   #else
-    String myDir = "/" + (String)progNumber + "/";
+    String sdKitPath = "/SAMPLES/AcidBox/" + (String)progNumber;
   #endif
 #endif
 
   sampleInfoCount = 0;
-  ScanContents(LittleFS, myDir.c_str() , 5);
-  if (sampleInfoCount<5) {
-    Serial.println("  Less than 5 samples found");
-    // Create default samples if LittleFS is mounted and no samples exist
-    if (LittleFS.begin(FORMAT_LITTLEFS_IF_FAILED)) {
-      Serial.println("  Creating default samples...");
-      CreateDefaultSamples(LittleFS);
-      // Re-scan to pick up the newly created samples
-      sampleInfoCount = 0;
-      ScanContents(LittleFS, myDir.c_str() , 5);
-      Serial.printf("  Found %d samples after creating defaults\n", sampleInfoCount);
-    }
-  }
-  repeat = min((uint8_t)sampleInfoCount , repeat); // 12 (an octave) or less
 
-  if (repeat==0) repeat = 1;
-  
+  // Try SD card first
+  if (SD_MMC.cardType() != CARD_NONE) {
+    File testDir = SD_MMC.open(sdKitPath);
+    if (testDir && testDir.isDirectory()) {
+      Serial.printf("  Found SD kit folder: %s\n", sdKitPath.c_str());
+      testDir.close();
+
+      ScanContents(SD_MMC, sdKitPath.c_str(), 5);
+      Serial.printf("  Found %d samples on SD card\n", sampleInfoCount);
+    } else {
+      Serial.printf("  SD kit folder not found: %s\n", sdKitPath.c_str());
+      if (testDir) testDir.close();
+    }
+  } else {
+    Serial.println("  SD card not available");
+  }
+
+  // If SD didn't yield enough samples, fall back to embedded samples.h
+  if (sampleInfoCount < 5) {
+    Serial.println("  Loading embedded samples from samples.h...");
+    LoadEmbeddedSamples();
+
+    // Reset sampleInfoCount if LoadEmbeddedSamples set it
+    // (LoadEmbeddedSamples sets sampleInfoCount internally)
+  }
+
+  repeat = min((uint8_t)sampleInfoCount, repeat); // 12 (an octave) or less
+
+  if (repeat == 0) repeat = 1;
+
 #ifndef NO_PSRAM
-  // allocate buffer in PSRAM to be able to load all samples 
+  // Allocate PSRAM buffer if not already done by LoadEmbeddedSamples
   heap_caps_print_heap_info(MALLOC_CAP_8BIT);
   if (psramFound()) {
     if ( RamCache == NULL ) {
       psramInit();
       RamCache = (uint8_t*)ps_malloc(PSRAM_SAMPLER_CACHE);
-     // RamCache = (uint8_t*)malloc(PSRAM_SAMPLER_CACHE);
     }
     if (RamCache == NULL) {
       DEBUG ("FAILED TO ALLOCATE PSRAM CACHE BUFFER!");
     } else {
       DEBF ("PSRAM BUFFER OF %d bytes ALLOCATED! STANDARD CONFIG ENGAGED!\r\n", PSRAM_SAMPLER_CACHE );
-      
       heap_caps_print_heap_info(MALLOC_CAP_8BIT);
     }
   } else {
@@ -177,75 +251,75 @@ void Sampler::Init() {
   heap_caps_print_heap_info(MALLOC_CAP_8BIT);
   if ( RamCache == NULL ) {
     RamCache = (uint8_t*)malloc(RAM_SAMPLER_CACHE);
-    // RamCache = (uint8_t*)heap_caps_malloc(RAM_SAMPLER_CACHE, MALLOC_CAP_8BIT);
   }
   if (RamCache == NULL) {
     DEBUG ("FAILED TO ALLOCATE RAM CACHE BUFFER!");
   } else {
     DEBF ("HEAP BUFFER of %d bytes ALLOCATED! MINIMAL CONFIG ENGAGED!\r\n", RAM_SAMPLER_CACHE);
   }
-
 #endif
+
 #ifdef DEBUG_SAMPLER
   DEBUG("---\nList Samples:");
 #endif
   for (int i = 0; i < sampleInfoCount; i++ ) {
 #ifdef DEBUG_SAMPLER
-//    DEBF( "s[%d]: %s\n", i, samplePlayer[i].filename );
     DEBF( "s[%d]: %s\n", i, filenames[i] );
 #endif
 
-//    File f = LittleFS.open( (String)(samplePlayer[i].filename) );
-    File f = LittleFS.open( (String)(filenames[i]) );
+    // Only load from SD if we have filenames (SD was used)
+    if (sampleInfoCount >= 5 && filenames[i][0] != '\0') {
+      File f = SD_MMC.open( (String)(filenames[i]) );
 
-    if ( f ) {
-      size_t len = f.size();
-      union wavHeader wav;
-      if ( len ) {
-        toRead = sizeof(wav.wavHdr);
-        f.read(&(wav.wavHdr[0]),toRead);
-        len -= toRead;
-      }
+      if ( f ) {
+        size_t len = f.size();
+        size_t toRead = 512;
+        size_t oldPointer = 0;
+        static size_t buffPointer = 0;
 
-      // load sample data to the RAM/PSRAM buffer, we only do this step on startup
-      samplePlayer[i].sampleStart = buffPointer;
-      oldPointer = buffPointer;
-      while( len ){
-        if(len > (1UL<<15)){
-          toRead = (1UL<<15);
-        } else {
-          toRead = len;
+        union wavHeader wav;
+        if ( len ) {
+          toRead = sizeof(wav.wavHdr);
+          f.read(&(wav.wavHdr[0]), toRead);
+          len -= toRead;
         }
-        f.read(&(RamCache[buffPointer]), toRead);
-        buffPointer += toRead;
-        len -= toRead;
-      }
-      wav.dataSize = min((size_t)wav.dataSize, buffPointer-oldPointer); // some samples have wrong header info
-      
-  //    samplePlayer[i].file =            f;// store file pointer for future use // nope, we don't, we close file, LittleFS won't let us keep so many open files, neither  memory...
-      samplePlayer[i].sampleRate =      wav.sampleRate;
+
+        // load sample data to the RAM/PSRAM buffer
+        samplePlayer[i].sampleStart = buffPointer;
+        oldPointer = buffPointer;
+        while( len ){
+          if(len > (1UL<<15)){
+            toRead = (1UL<<15);
+          } else {
+            toRead = len;
+          }
+          f.read(&(RamCache[buffPointer]), toRead);
+          buffPointer += toRead;
+          len -= toRead;
+        }
+        wav.dataSize = min((size_t)wav.dataSize, buffPointer - oldPointer);
+
+        samplePlayer[i].sampleRate =      wav.sampleRate;
 #ifdef DEBUG_SAMPLER
-      DEBF("fileSize: %d\n",            wav.fileSize);
-      DEBF("lengthOfData: %d\n",        wav.lengthOfData);
-      DEBF("numberOfChannels: %d\n",    wav.numberOfChannels);
-      DEBF("sampleRate: %d\n",          wav.sampleRate);
-//      DEBF("byteRate: %d\n",            wav.byteRate);
-//      DEBF("bytesPerSample: %d\n",      wav.bytesPerSample);
-      DEBF("bitsPerSample: %d\n",       wav.bitsPerSample);
-      DEBF("dataSize: %d\n",            wav.dataSize); 
-//      DEBF("dataStartInBuffer: %d\n",   samplePlayer[i].sampleStart);
-//      DEBF("dataInBlock: %d\n",         (buffPointer - samplePlayer[i].sampleStart));
+        DEBF("fileSize: %d\n",            wav.fileSize);
+        DEBF("lengthOfData: %d\n",        wav.lengthOfData);
+        DEBF("numberOfChannels: %d\n",    wav.numberOfChannels);
+        DEBF("sampleRate: %d\n",          wav.sampleRate);
+        DEBF("bitsPerSample: %d\n",       wav.bitsPerSample);
+        DEBF("dataSize: %d\n",            wav.dataSize);
 #endif
-      samplePlayer[i].sampleSize =      wav.dataSize; /* without mark section and size info */
-      samplePlayer[i].sampleSeek =      0xFFFFFFFF;
-      f.close();
-    } else {
-      DEBF("error opening file!\n");
+        samplePlayer[i].sampleSize =      wav.dataSize;
+        samplePlayer[i].sampleSeek =      0xFFFFFFFF;
+        f.close();
+      } else {
+        DEBF("error opening file!\n");
+      }
     }
+    // Embedded samples already loaded by LoadEmbeddedSamples() — nothing more to do
   }
 
   for ( int i = 0; i < sampleInfoCount; i++ ) {
-    int j = (i % repeat ) + 1 ; 
+    int j = (i % repeat ) + 1 ;
     samplePlayer[i].sampleSeek = 0xFFFFFFFF;
     samplePlayer[i].active = false;
 

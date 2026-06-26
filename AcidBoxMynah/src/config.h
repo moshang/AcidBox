@@ -36,7 +36,7 @@
 #define I2S_BCLK_PIN    6       // I2S BIT CLOCK pin (BCL BCK CLK)
 #define I2S_WCLK_PIN    7       // I2S WORD CLOCK pin (WCK WCL LCK)
 #define I2S_DOUT_PIN    8       // to I2S DATA IN pin (DIN D DAT)
-const uint8_t POT_PINS[POT_NUM] = {15, 16, 17};
+//const uint8_t POT_PINS[POT_NUM] = {21, 21, 21};
 #elif defined(CONFIG_IDF_TARGET_ESP32)
 #define I2S_BCLK_PIN    5       // I2S BIT CLOCK pin (BCL BCK CLK)
 #define I2S_WCLK_PIN    19      // I2S WORD CLOCK pin (WCK WCL LCK)
@@ -164,7 +164,7 @@ const uint8_t POT_PINS[POT_NUM] = {34, 35, 36};
 //   Total:   ~2.0 MB
 #define PSRAM_SAMPLER_CACHE 1572864 // 1.5 MB — fits comfortably in 2MB PSRAM with delay buffer
 #define SAMPLECNT       (7 * 12)    // how many samples we prepare (7 octaves by 12 samples)
-#define DEFAULT_DRUMKIT 0           // kit 0 = folder /0/ on LittleFS (matches CreateDefaultSamples())
+#define DEFAULT_DRUMKIT 1           // kit 1 = folder /1/ (SD card: SAMPLES/AcidBox/1/)
 
 #define TINY 1e-32;
 

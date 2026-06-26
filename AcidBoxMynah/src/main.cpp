@@ -287,11 +287,12 @@ void setup(void) {
     Serial.println("⚠️  SD card not available - samples cannot be loaded from SD");
   }
 
+  
   MidiInit(); // init midi input and handling of midi events
 
   buildTables();
 
-  for (int i = 0; i < POT_NUM; i++) pinMode( POT_PINS[i] , INPUT);
+  //for (int i = 0; i < POT_NUM; i++) pinMode( POT_PINS[i] , INPUT);
 
   Serial.println("Initializing Synth1...");
   Synth1.Init();
@@ -660,22 +661,23 @@ void updateLEDS() {
  *  Some debug and service routines *****************************************************************************************************************************
 */
 
-void readPots() {
-  static const float snap = 0.003f;
-  static uint8_t i = 0;
-  static float tmp;
-  static const float NORMALIZE_ADC = 1.0f / 4096.0f;
-//read one pot per call
-  tmp = (float)analogRead(POT_PINS[i]) * NORMALIZE_ADC;
-  if (fabs(tmp - param[i]) > snap) {
-    param[i] = tmp;
-    paramChange(i, tmp);
-  }
+// in AcidBoxMynah we read our single pot in POTS.cpp, so this is not used anymore
+// void readPots() {
+//   static const float snap = 0.003f;
+//   static uint8_t i = 0;
+//   static float tmp;
+//   static const float NORMALIZE_ADC = 1.0f / 4096.0f;
+// //read one pot per call
+//   tmp = (float)analogRead(POT_PINS[i]) * NORMALIZE_ADC;
+//   if (fabs(tmp - param[i]) > snap) {
+//     param[i] = tmp;
+//     paramChange(i, tmp);
+//   }
 
-  i++;
-  // if (i >= POT_NUM) i=0;
-  i %= POT_NUM;
-}
+//   i++;
+//   // if (i >= POT_NUM) i=0;
+//   i %= POT_NUM;
+// }
 
 void paramChange(uint8_t paramNum, float paramVal) {
   // paramVal === param[paramNum];
