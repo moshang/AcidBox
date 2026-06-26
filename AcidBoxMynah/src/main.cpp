@@ -563,6 +563,7 @@ void paramChange(uint8_t paramNum, float paramVal) {
 
 #ifdef JUKEBOX
 void jukebox_tick() {
+  // Pattern generation (fills globalSeq and plays via legacy MIDI)
   run_tick();
   myRandomAddEntropy((uint16_t)(micros() & 0x0000FFFF));
 }
@@ -575,7 +576,14 @@ void regular_checks() {
   midi_read();
   
 #ifdef JUKEBOX
-  jukebox_tick();
+  if (currentMode == MODE_JUKEBOX) {
+    // Jukebox generation + sequencer engine
+    jukebox_tick();
+  } else {
+    // EDIT mode: jukebox generation suspended,
+    // sequencer loops the patterns in globalSeq continuously
+    sequencer_service();
+  }
 #endif
 
 

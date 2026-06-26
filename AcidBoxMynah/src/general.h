@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "midi_config.h"
+#include "sequencer.h"
 
 #include <NeoPixelBus.h>
 

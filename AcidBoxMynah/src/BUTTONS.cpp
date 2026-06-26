@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "general.h"
+#include "sequencer.h"
 
 // ---------- INITIALIZE SHIFT REGISTER ----------
 void initShiftRegister() {
@@ -88,9 +89,30 @@ void updateButtons() {
 
 // ---------- PROCESS BUTTON EVENTS ----------
 void processButtons() {
+	// Static flag: set when F1+F8 combo triggers a mode toggle,
+	// so the subsequent F8 release does not also start/stop the sequencer.
+	static bool modeToggleHappened = false;
+
+	// F1 held + F8 just-pressed: toggle play mode (JUKEBOX ↔ EDIT)
+	if (isButtonPressed(BTN_F1) && isButtonJustPressed(BTN_F8)) {
+		if (currentMode == MODE_JUKEBOX) {
+			setMode(MODE_EDIT);
+		} else {
+			setMode(MODE_JUKEBOX);
+		}
+		modeToggleHappened = true;
+		return; // skip the normal F8 release handler this cycle
+	}
+
 	// F8 release: toggle sequencer start/stop
+	// BUT skip if we just handled the F1+F8 combo above
 	if (isButtonJustReleased(BTN_F8)) {
-		midi_toggle_play();
+		if (!modeToggleHappened) {
+			sequencer_toggle_play();
+		} else {
+			// The combo was used — clear the flag so next F8 press works normally
+			modeToggleHappened = false;
+		}
 	}
 }
 

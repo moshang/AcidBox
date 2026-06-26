@@ -1,0 +1,319 @@
+#include <Arduino.h>
+#include "sequencer.h"
+#include "general.h"
+#include "config.h"
+#include "midi_config.h"
+
+// ============================================================
+// Global instances
+// ============================================================
+SequencerState globalSeq;
+PlaybackMode    currentMode = MODE_JUKEBOX;
+
+// ============================================================
+// External references (defined in AcidBanger.cpp)
+// ============================================================
+extern uint8_t current_drumkit;
+
+// ============================================================
+// Internal timing variables
+// ============================================================
+static uint32_t lastTickUs = 0;        // micros() when the last 16th-note tick fired
+static uint32_t nextTickIntervalUs = 0; // microseconds to wait until the next tick
+
+// ============================================================
+// Drum voice MIDI note mappings (matching AcidBanger.cpp)
+// ============================================================
+#define KICK_NOTE  0  // BD
+#define SNARE_NOTE 1  // SD
+#define CH_NOTE    6  // CH (closed hat)
+#define OH_NOTE    7  // OH (open hat)
+#define CLAP_NOTE  4  // CLAP (handclap)
+#define LT_NOTE    2  // low tom
+#define MT_NOTE    3  // mid tom
+#define HT_NOTE    5  // high tom
+#define CRASH_NOTE 9  // CR
+#define RIM_NOTE   8  // rimshot
+#define PERC_NOTE  11 // percussion / maraca
+
+// ============================================================
+// Helper: calculate microseconds per 16th note at given BPM
+// ============================================================
+static inline uint32_t calc_16th_interval_us(float bpm) {
+  // 1 beat (quarter note) = 60,000,000 / bpm microseconds
+  // 1 sixteenth note = quarter / 4
+  if (bpm < 1.0f) bpm = 1.0f;
+  return (uint32_t)(15000000.0f / bpm);
+}
+
+// ============================================================
+// Helper: send note-off for all sequencer voices
+// ============================================================
+static void sequencer_all_notes_off() {
+  // Synth voices
+  midi_send_noteoff(SYNTH1_MIDI_CHAN, 0);
+  midi_send_noteoff(SYNTH2_MIDI_CHAN, 0);
+  handleNoteOff(SYNTH1_MIDI_CHAN, 0, 0);
+  handleNoteOff(SYNTH2_MIDI_CHAN, 0, 0);
+
+  // Drum voices — send note-off across a range covering all drum instruments
+  for (uint8_t i = 0; i < 12; i++) {
+    uint8_t drumNote = current_drumkit + i;
+    midi_send_noteoff(DRUM_MIDI_CHAN, drumNote);
+    handleNoteOff(DRUM_MIDI_CHAN, drumNote, 0);
+  }
+}
+
+// ============================================================
+// Initialisation
+// ============================================================
+void sequencer_init() {
+  // Clear all patterns
+  memset(&globalSeq, 0, sizeof(SequencerState));
+
+  // Set defaults
+  globalSeq.bpm       = 130.0f;
+  globalSeq.swing     = 60.0f;
+  globalSeq.currentStep = 0;
+  globalSeq.isPlaying = false;
+
+  currentMode = MODE_JUKEBOX;
+  lastTickUs = 0;
+  nextTickIntervalUs = 0;
+}
+
+// ============================================================
+// Mode switching
+// ============================================================
+void setMode(PlaybackMode newMode) {
+  if (newMode == currentMode) return;
+
+  if (newMode == MODE_EDIT) {
+    // Transition to EDIT mode: suspend jukebox generation
+    // Kill any playing notes
+    sequencer_all_notes_off();
+    // Reset sequencer step to 0 for clean loop start
+    globalSeq.currentStep = 0;
+    lastTickUs = micros();
+    nextTickIntervalUs = calc_16th_interval_us(globalSeq.bpm);
+  } else {
+    // Transition to JUKEBOX mode: re-enable jukebox generation
+    // The jukebox will repopulate globalSeq on the next run_tick()
+    globalSeq.currentStep = 0;
+    lastTickUs = micros();
+    nextTickIntervalUs = calc_16th_interval_us(globalSeq.bpm);
+  }
+
+  currentMode = newMode;
+}
+
+// ============================================================
+// Start / Stop / Toggle
+// ============================================================
+void sequencer_start() {
+  if (globalSeq.isPlaying) return;
+  globalSeq.isPlaying = true;
+  globalSeq.currentStep = 0;
+  lastTickUs = micros();
+  nextTickIntervalUs = calc_16th_interval_us(globalSeq.bpm);
+}
+
+void sequencer_stop() {
+  if (!globalSeq.isPlaying) return;
+  globalSeq.isPlaying = false;
+  sequencer_all_notes_off();
+}
+
+void sequencer_toggle_play() {
+  if (currentMode == MODE_JUKEBOX) {
+    // In JUKEBOX mode: toggle the legacy jukebox generation engine.
+    // This flips midi_playing, which drives run_tick() → sequencer_step()
+    // that bridges patterns into globalSeq and plays via legacy MIDI.
+    midi_toggle_play();
+    // Keep globalSeq.isPlaying in sync with the jukebox
+    // (midi_toggle_play flips midi_playing inside AcidBanger.cpp)
+    globalSeq.isPlaying = !globalSeq.isPlaying;
+  } else {
+    // In EDIT mode: toggle the new microsecond-accurate sequencer engine.
+    // The jukebox generation is suspended — only sequencer_service() runs.
+    if (globalSeq.isPlaying) {
+      sequencer_stop();
+    } else {
+      sequencer_start();
+    }
+  }
+}
+
+// ============================================================
+// The main sequencer tick — called at each 16th-note boundary
+// Sends MIDI note-on/off for the current step's events.
+// ============================================================
+uint32_t sequencer_tick() {
+  // --- Synth 1 ---
+  SynthStep& s1 = globalSeq.synth1.steps[globalSeq.currentStep];
+  if (s1.active && s1.note > 0) {
+    // Note-on with appropriate velocity (accent = louder)
+    uint8_t vel = s1.accent ? 120 : 80;
+    midi_send_noteon(SYNTH1_MIDI_CHAN, s1.note, vel);
+    handleNoteOn(SYNTH1_MIDI_CHAN, s1.note, vel);
+  } else {
+    // Note-off any previously playing note on synth1
+    midi_send_noteoff(SYNTH1_MIDI_CHAN, 0);
+    handleNoteOff(SYNTH1_MIDI_CHAN, 0, 0);
+  }
+
+  // --- Synth 2 ---
+  SynthStep& s2 = globalSeq.synth2.steps[globalSeq.currentStep];
+  if (s2.active && s2.note > 0) {
+    uint8_t vel = s2.accent ? 120 : 80;
+    midi_send_noteon(SYNTH2_MIDI_CHAN, s2.note, vel);
+    handleNoteOn(SYNTH2_MIDI_CHAN, s2.note, vel);
+  } else {
+    midi_send_noteoff(SYNTH2_MIDI_CHAN, 0);
+    handleNoteOff(SYNTH2_MIDI_CHAN, 0, 0);
+  }
+
+  // --- Drums ---
+  uint16_t drumMask = globalSeq.drum.steps[globalSeq.currentStep];
+  if (drumMask != 0) {
+    // Map each bit to its corresponding drum MIDI note
+    struct DrumBitMap {
+      uint16_t bit;
+      uint8_t  note;
+    };
+    static const DrumBitMap drumMap[] = {
+      { 1 << 0,  KICK_NOTE  },  // BD
+      { 1 << 1,  SNARE_NOTE },  // SD
+      { 1 << 2,  CH_NOTE    },  // CH
+      { 1 << 3,  OH_NOTE    },  // OH
+      { 1 << 4,  CLAP_NOTE  },  // CLAP
+      { 1 << 5,  LT_NOTE    },  // LT
+      { 1 << 6,  MT_NOTE    },  // MT
+      { 1 << 7,  HT_NOTE    },  // HT
+      { 1 << 8,  CRASH_NOTE },  // CR
+      { 1 << 9,  RIM_NOTE   },  // RIM
+      { 1 << 10, PERC_NOTE  },  // MAR (maraca/shaker)
+      { 1 << 11, CLAP_NOTE  },  // CLAV (claves → reuse clap note for simplicity)
+    };
+    static const size_t numDrumEntries = sizeof(drumMap) / sizeof(drumMap[0]);
+
+    for (size_t i = 0; i < numDrumEntries; i++) {
+      if (drumMask & drumMap[i].bit) {
+        uint8_t midiNote = current_drumkit + drumMap[i].note;
+        uint8_t vel = 100;
+        midi_send_noteon(DRUM_MIDI_CHAN, midiNote, vel);
+        handleNoteOn(DRUM_MIDI_CHAN, midiNote, vel);
+      }
+    }
+  }
+
+  // --- Advance step ---
+  uint8_t nextStep = globalSeq.currentStep + 1;
+  if (nextStep >= 16) {
+    nextStep = 0;
+  }
+  globalSeq.currentStep = nextStep;
+
+  // --- Calculate interval until the next tick (with swing) ---
+  uint32_t baseInterval = calc_16th_interval_us(globalSeq.bpm);
+
+  // Swing: shift even steps (0-indexed: 1, 3, 5, 7, 9, 11, 13, 15) based on ratio
+  // Swing range: 50.0 (straight) → 75.0 (maximum swing)
+  // At 50%: no shift.
+  // At 75%: offbeat 16ths are delayed by ~50% of the base interval.
+  // Interval pattern: [T+d, T-d, T+d, T-d, ...]
+  //   where d = baseInterval * (swing - 50) / 50
+  //   Even→odd step (this step = even index): interval = T + d
+  //   Odd→even step (this step = odd index):  interval = T - d
+  float swingRatio = (globalSeq.swing - 50.0f) / 50.0f;
+  if (globalSeq.currentStep & 1) {
+    // This is an odd-indexed step (we already advanced, so currentStep is the *next* step).
+    // In the pattern above, if we just played an odd step and the *next* step is even,
+    // the interval from odd→even should be T - d.
+    // wait — we've already advanced currentStep. The interval we calculate here is from
+    // the step we just played (prevStep) to currentStep.
+    // If currentStep is odd (1, 3, 5...), then prevStep was even (0, 2, 4...).
+    // The even→odd interval is T + d.
+    nextTickIntervalUs = baseInterval + (uint32_t)((float)baseInterval * swingRatio);
+  } else {
+    // currentStep is even (0, 2, 4...), prevStep was odd (15, 1, 3...).
+    // The odd→even interval is T - d.
+    // For step 0 after step 15: also treat as odd→even (which it is).
+    nextTickIntervalUs = baseInterval - (uint32_t)((float)baseInterval * swingRatio);
+  }
+
+  return nextTickIntervalUs;
+}
+
+// ============================================================
+// Sequencer service function — call from regular_checks() on Core 1
+// Checks micros() and fires sequencer_tick() when the interval expires.
+// ============================================================
+void sequencer_service() {
+  if (!globalSeq.isPlaying) return;
+
+  uint32_t now = micros();
+  uint32_t elapsed = now - lastTickUs;
+
+  if (elapsed >= nextTickIntervalUs) {
+    // 1. Capture the interval we actually just waited for before it gets modified
+    uint32_t completedInterval = nextTickIntervalUs;
+
+    // Prevent catch-up: if we've overshot by more than one interval, skip
+    if (elapsed < completedInterval * 2) {
+      // 2. Running this updates nextTickIntervalUs for the NEXT step
+      sequencer_tick();
+    } else {
+      // We've fallen too far behind — reset timing and advance silently
+      globalSeq.currentStep = (globalSeq.currentStep + 1) & 0x0F;
+      
+      // Recalculate nextTickIntervalUs to match the skipped step's swing timing
+      uint32_t baseInterval = calc_16th_interval_us(globalSeq.bpm);
+      float swingRatio = (globalSeq.swing - 50.0f) / 50.0f;
+      if (globalSeq.currentStep & 1) {
+        nextTickIntervalUs = baseInterval + (uint32_t)((float)baseInterval * swingRatio);
+      } else {
+        nextTickIntervalUs = baseInterval - (uint32_t)((float)baseInterval * swingRatio);
+      }
+    }
+
+    // 3. Advance the timing anchor by the interval we JUST completed
+    lastTickUs += completedInterval;
+  }
+}
+
+// ============================================================
+// Load functions: copy legacy AcidBanger patterns into our structures
+// ============================================================
+
+void sequencer_load_synth_pattern(SynthPattern* dst,
+                                   const uint8_t* notes,
+                                   uint16_t accentBits,
+                                   uint16_t glideBits) {
+  for (int i = 0; i < 16; i++) {
+    SynthStep& s = dst->steps[i];
+    s.note   = notes[i];
+    s.active = (notes[i] > 0);
+    s.accent = (accentBits >> i) & 1;
+    s.slide  = (glideBits >> i) & 1;
+  }
+}
+
+void sequencer_load_drum_pattern(DrumPattern* dst,
+                                  const uint8_t* kick,
+                                  const uint8_t* snare,
+                                  const uint8_t* ch,
+                                  const uint8_t* oh,
+                                  const uint8_t* perc,
+                                  const uint8_t* crash) {
+  for (int i = 0; i < 16; i++) {
+    uint16_t mask = 0;
+    if (kick[i]  > 0)  mask |= (1 << 0);
+    if (snare[i] > 0)  mask |= (1 << 1);
+    if (ch[i]    > 0)  mask |= (1 << 2);
+    if (oh[i]    > 0)  mask |= (1 << 3);
+    if (perc[i]  > 0)  mask |= (1 << 10);
+    if (crash[i] > 0)  mask |= (1 << 8);
+    dst->steps[i] = mask;
+  }
+}

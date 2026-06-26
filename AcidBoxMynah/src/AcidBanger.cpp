@@ -461,7 +461,43 @@ void sequencer_step(byte step) {
 #ifdef DEBUG_JUKEBOX_
   DEBF("midi step %d\r\n", step);
 #endif
-  // Play all notes in current step
+
+  // --- Bridge jukebox patterns into globalSeq for the new sequencer engine ---
+
+  // Synth 1 (instrument 0) and Synth 2 (instrument 1) patterns
+  for (int voice = 0; voice < 2; voice++) {
+    SynthPattern* sp = (voice == 0) ? &globalSeq.synth1 : &globalSeq.synth2;
+    Pattern* pat = &memories[cur_memory].patterns[voice];
+    for (int i = 0; i < 16; i++) {
+      sp->steps[i].note   = pat->notes[i];
+      sp->steps[i].active = (pat->notes[i] > 0);
+      sp->steps[i].accent = (pat->accent >> i) & 1;
+      sp->steps[i].slide  = (pat->glide >> i) & 1;
+    }
+  }
+
+  // Drum patterns: instruments 2=KICK, 3=SNARE, 4=CH, 5=OH, 6=PERC, 7=CRASH
+  for (int i = 0; i < 16; i++) {
+    uint16_t mask = 0;
+    Pattern* pKick  = &memories[cur_memory].patterns[2];  // KICK
+    Pattern* pSnare = &memories[cur_memory].patterns[3];  // SNARE
+    Pattern* pCh    = &memories[cur_memory].patterns[4];  // CH
+    Pattern* pOh    = &memories[cur_memory].patterns[5];  // OH
+    Pattern* pPerc  = &memories[cur_memory].patterns[6];  // PERC
+    Pattern* pCrash = &memories[cur_memory].patterns[7];  // CRASH
+    if (pKick->notes[i]  > 0)  mask |= (1 << 0);
+    if (pSnare->notes[i] > 0)  mask |= (1 << 1);
+    if (pCh->notes[i]    > 0)  mask |= (1 << 2);
+    if (pOh->notes[i]    > 0)  mask |= (1 << 3);
+    if (pPerc->notes[i]  > 0)  mask |= (1 << 10);
+    if (pCrash->notes[i] > 0)  mask |= (1 << 8);
+    globalSeq.drum.steps[i] = mask;
+  }
+
+  // In JUKEBOX mode, the bridge must also play notes through the legacy
+  // MIDI system so the audio engine hears them immediately.
+  // In EDIT mode, only the sequencer engine plays (via sequencer_service()).
+
   for (int i = 0; i < NumInstruments; i++) {
     Pattern *pat = &memories[cur_memory].patterns[i];
     byte accent = (pat->accent >> step) & 1;

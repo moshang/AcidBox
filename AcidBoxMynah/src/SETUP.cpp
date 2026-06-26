@@ -6,6 +6,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "general.h"
+#include "sequencer.h"
 #include "fx_delay.h"
 #include "compressor.h"
 #include "synthvoice.h"
@@ -122,6 +123,9 @@ void setup(void) {
 #ifdef JUKEBOX
   init_midi(); // AcidBanger function
 #endif
+
+  // Initialize the 16-step sequencer engine
+  sequencer_init();
 
   // silence while we haven't loaded anything reasonable
   for (int i = 0; i < DMA_BUF_LEN; i++) {
