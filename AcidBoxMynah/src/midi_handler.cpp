@@ -35,6 +35,8 @@ MIDI_NAMESPACE::SerialMIDI<HardwareSerial> Serial2MIDI2(Serial2);
 MIDI_NAMESPACE::MidiInterface<MIDI_NAMESPACE::SerialMIDI<HardwareSerial, Serial2MIDISettings>> MIDI2((MIDI_NAMESPACE::SerialMIDI<HardwareSerial, Serial2MIDISettings>&)Serial2MIDI2);
 #endif
 
+const uint8_t synthEditCC[16] = {CC_303_WAVEFORM, CC_303_PORTATIME, CC_303_ACCENT_LVL, CC_303_ENVMOD_LVL, CC_303_PAN, CC_303_DELAY_SEND, CC_303_REVERB_SEND, CC_303_VOLUME, CC_303_RESO, CC_303_CUTOFF, CC_303_ATTACK, CC_303_DECAY, CC_303_DISTORTION, CC_303_OVERDRIVE, CC_303_SATURATOR, CC_303_TUNING}; // MIDI channels for synth1, synth2, drums
+
 // Forward declaration of do_midi_stop defined in AcidBanger.cpp
 void do_midi_stop();
 
