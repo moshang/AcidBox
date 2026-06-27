@@ -11,6 +11,7 @@ float bpm = 130.0f;
 #endif
 #include "compressor.h"
 
+
 void drums_generate() {
     for (int i=0; i < DMA_BUF_LEN; i++){
       Drums.Process( &drums_buf_l[current_gen_buf][i], &drums_buf_r[current_gen_buf][i] );      
@@ -27,6 +28,10 @@ void synth2_generate() {
     for (int i=0; i < DMA_BUF_LEN; i++){
       synth2_buf[current_gen_buf][i] = Synth2.getSample() ;      
     } 
+}
+
+float easeInExpo(float x) {
+    return (x == 0.0f) ? 0.0f : std::exp2f(10.0f * x - 10.0f);
 }
 
 void IRAM_ATTR mixer() { // sum buffers 

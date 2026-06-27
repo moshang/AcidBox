@@ -5,7 +5,7 @@
 #include "config.h"
 #include "midi_config.h"
 #include "sequencer.h"
-
+#include "UI.h"
 #include <NeoPixelBus.h>
 
 // Forward declare the classes so we can use pointers/references
@@ -20,6 +20,9 @@ void drums_generate();
 void synth1_generate();
 void synth2_generate();
 void IRAM_ATTR mixer();
+
+// Easing
+float easeInExpo(float x);
 
 // OLED / Display
 void oledInit();
@@ -63,7 +66,15 @@ extern volatile uint32_t buttonStates;
 extern volatile uint32_t lastButtonStates;
 extern bool anyStepButtonHeld;
 extern bool sdCardAvailable;
+
+// UI
 extern volatile bool ledsDirty;
+extern bool refreshOLED;
+extern EditType currentEditType;
+extern SynthEditMode currentEditMode;
+extern const char* editTypeNames[4];
+extern const char* synthEditModeNames[16];
+extern const uint8_t midiChn[4];
 
 // Shared instances and variables
 extern Sampler Drums;

@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "midi_handler.h"
 #include "general.h"
 #include "synthvoice.h"
 #include "sampler.h"

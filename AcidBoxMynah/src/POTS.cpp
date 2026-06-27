@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "general.h"
-
+#include "midi_handler.h"
 // Potentiometer state variables
 static uint8_t potAvgIndex = 0;
 static uint16_t potValAvg[8] = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -34,14 +34,15 @@ void updatePot() {
 // ---------- HANDLE POT VALUE ----------
 void handlePot(uint16_t potVal) {
 	// Map 0-511 to 0.0-1.0 for compatibility with AcidBox's param[] system
-	float normalizedVal = (float)potVal / 511.0f;
+	float normalizedVal = (float)potVal / 4095.0f;
 	if (normalizedVal > 1.0f) normalizedVal = 1.0f;
 
-	// For now, just log pot activity
-	// This will be expanded to control various parameters
-	static uint32_t lastPrint = 0;
-	if (millis() - lastPrint > 500) {
-		lastPrint = millis();
-		Serial.printf("Pot: %d (%.3f)\n", potVal, normalizedVal);
-	}
+	handleCC(midiChn[currentEditType], 7, (uint8_t)(normalizedVal * 127.0f));
+	// // For now, just log pot activity
+	// // This will be expanded to control various parameters
+	// static uint32_t lastPrint = 0;
+	// if (millis() - lastPrint > 500) {c
+	// 	lastPrint = millis();
+	// 	Serial.printf("Pot: %d (%.3f)\n", potVal, normalizedVal);
+	//}
 }

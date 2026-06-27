@@ -2,6 +2,8 @@
 #include <U8g2lib.h>
 #include <Wire.h>
 #include "config.h"
+#include "general.h"
+#include "UI.h"
 
 // OLED display (128x64, hardware I2C) — same SSD1306 as MYNAH/RGB
 // HW_I2C constructor only takes rotation + reset pin. I2C pins are set via Wire.begin().
@@ -29,4 +31,19 @@ void oledInit()
 
     u8g2.sendBuffer();
     delay(1000);  // Hold splash for 1 second
+}
+
+void updateOLED()
+{
+    if (!refreshOLED) return;
+        
+    u8g2.clearBuffer();
+    u8g2.setFont(u8g2_font_helvB12_tf);
+    u8g2.setCursor(0, 20);
+    u8g2.print(editTypeNames[currentEditType]);
+        //u8g2.setFont(u8g2_font_helvB12_tf);
+    u8g2.setCursor(0, 35);
+    u8g2.print(synthEditModeNames[currentEditMode]);
+    u8g2.sendBuffer();
+    refreshOLED = false;
 }

@@ -35,7 +35,8 @@
 #include <SD_MMC.h>
 #include <string.h>
 #include "SETUP.h"
-
+#include "OLED.h"
+#include "UI.h"
 // NeoPixelBus uses the ESP32-S3 hardware RMT peripheral for non-blocking
 // asynchronous transmission — the CPU is NOT stalled while pixels are shifted out.
 #include <NeoPixelBus.h>
@@ -72,7 +73,7 @@ volatile uint32_t lastButtonStates = 0;
 bool anyStepButtonHeld = false;
 bool sdCardAvailable = false;
 volatile bool ledsDirty = true;
-
+bool refreshOLED = false;
 // Audio buffers of all kinds
 volatile uint8_t current_gen_buf = 0; // set of buffers for generation
 volatile uint8_t current_out_buf = 1 - 0; // set of buffers for output
@@ -256,8 +257,9 @@ void uiCoreTask(void* parameter) {
       case 1: processButtons(); break;
       case 2: updatePot(); break;
       case 3: updateLEDS(); break;
+      case 4: updateOLED(); break;
     }
-    phase = (phase + 1) % 4;
+    phase = (phase + 1) % 5;
     vTaskDelay(pdMS_TO_TICKS(5));
   }
 }

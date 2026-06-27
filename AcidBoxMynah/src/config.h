@@ -143,7 +143,6 @@ const uint8_t POT_PINS[POT_NUM] = {34, 35, 36};
 
 #define SYNTH1_MIDI_CHAN        1
 #define SYNTH2_MIDI_CHAN        2
-
 #define DRUM_MIDI_CHAN          10
 
 #define TWOPI (PI*2.0f)
