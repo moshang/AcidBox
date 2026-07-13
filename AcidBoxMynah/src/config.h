@@ -52,6 +52,7 @@ const uint8_t POT_PINS[POT_NUM] = {34, 35, 36};
 // NeoPixel (16-LED ring)
 #define LED_PIN   10
 #define LED_COUNT 16
+#define NEOPIXEL_BRIGHTNESS 128 // Global max brightness (70% = 178/255, adjust 1-255)
 
 // Potentiometer (single, for UI parameter control)
 #define POT_PIN         1

@@ -39,7 +39,8 @@
 #include "UI.h"
 // NeoPixelBus uses the ESP32-S3 hardware RMT peripheral for non-blocking
 // asynchronous transmission — the CPU is NOT stalled while pixels are shifted out.
-#include <NeoPixelBus.h>
+// NeoPixelBusLg adds luminance (global brightness) control.
+#include <NeoPixelBusLg.h>
 
 // lookuptables
 float midi_pitches[128];
@@ -67,7 +68,7 @@ uint8_t    ctrl_hold_notes;
 // ---- MYNAH HARDWARE GLOBALS ----
 // NeoPixelBus: 16-LED strip on GPIO 10, hardware RMT (non-blocking async)
 // Neo800KbpsMethod transmits via RMT peripheral — CPU is not stalled.
-NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(LED_COUNT, LED_PIN);
+NeoPixelBusLg<NeoGrbFeature, Neo800KbpsMethod> strip(LED_COUNT, LED_PIN);
 volatile uint32_t buttonStates = 0;
 volatile uint32_t lastButtonStates = 0;
 bool anyStepButtonHeld = false;
@@ -479,6 +480,7 @@ void visualizerNoteOff(uint8_t voice, uint8_t note) {
 void neopixelInit()
 {
   strip.Begin();
+  strip.SetLuminance(NEOPIXEL_BRIGHTNESS);
   strip.ClearTo(RgbColor(0, 0, 0));
   strip.Show();
 #ifdef JUKEBOX

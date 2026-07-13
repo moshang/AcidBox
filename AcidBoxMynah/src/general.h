@@ -6,7 +6,7 @@
 #include "midi_config.h"
 #include "sequencer.h"
 #include "UI.h"
-#include <NeoPixelBus.h>
+#include <NeoPixelBusLg.h>
 
 // Forward declare the classes so we can use pointers/references
 class SynthVoice;
@@ -61,7 +61,7 @@ void uiCoreTask(void* parameter);
 
 // ---- MYNAH HARDWARE EXTERN GLOBALS ----
 // NeoPixelBus strip on GPIO 10, GRB (WS2812/SK6812), 800Kbps via RMT (async, non-blocking)
-extern NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip;
+extern NeoPixelBusLg<NeoGrbFeature, Neo800KbpsMethod> strip;
 extern volatile uint32_t buttonStates;
 extern volatile uint32_t lastButtonStates;
 extern bool anyStepButtonHeld;
