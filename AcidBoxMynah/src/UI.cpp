@@ -10,22 +10,22 @@ const char* editTypeNames[4] = {
 };
 
 const char* synthEditModeNames[16] = {
-    "WAVE", 
-    "SLIDE", 
-    "ACCENT",
-    "ENV MOD LVL",
-    "PAN",
-    "DELAY",
-    "REVERB",
-    "VOLUME",
-    "RESO",
-    "CUTOFF",
-    "ATTACK",
-    "DECAY",
-    "DISTORTION",
-    "OVERDRIVE",
-    "SATURATOR",
-    "TUNING"
+    "CUTOFF",        // F1+A1
+    "RESO",          // F1+A2
+    "WAVE",          // F1+A3
+    "ENV MOD LVL",   // F1+A4
+    "PAN",           // F1+A5
+    "DELAY",         // F1+A6
+    "REVERB",        // F1+A7
+    "VOLUME",        // F1+A8
+    "SLIDE",         // F1+B1
+    "ACCENT",        // F1+B2
+    "ATTACK",        // F1+B3
+    "DECAY",         // F1+B4
+    "DISTORTION",    // F1+B5
+    "OVERDRIVE",     // F1+B6
+    "SATURATOR",     // F1+B7
+    "TUNING"         // F1+B8
 };
 
 const char* drumEditModeNames[8] = {

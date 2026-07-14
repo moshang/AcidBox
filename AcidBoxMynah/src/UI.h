@@ -13,23 +13,24 @@ enum EditType {
 extern const char* editTypeNames[4];
 
 // Synth edit modes
+// Enum order matches button positions (F1+A1=0, F1+A2=1, ... F1+B1=8, F1+B2=9, ...)
 enum SynthEditMode {
-  WaveEdit,
-  SlideEdit, // portamento - on/off on the buttons and portatime on the pot
-  AccentEdit, // accent = on/off on the buttons and accent level on the pot
-  EnvModLvlEdit,
-  PanEdit,
-  DelayEdit,
-  ReverbEdit,
-  VolumeEdit,
-  ResoEdit,
-  CutoffEdit,
-  AttackEdit,
-  DecayEdit,
-  DistortionEdit,
-  OverdriveEdit,
-  SaturatorEdit,
-  TuningEdit,
+  CutoffEdit,       // F1+A1 (was F1+B2)
+  ResoEdit,         // F1+A2 (was F1+B1)
+  WaveEdit,         // F1+A3 (was F1+A1)
+  EnvModLvlEdit,    // F1+A4 (unchanged)
+  PanEdit,          // F1+A5 (unchanged)
+  DelayEdit,        // F1+A6 (unchanged)
+  ReverbEdit,       // F1+A7 (unchanged)
+  VolumeEdit,       // F1+A8 (unchanged)
+  SlideEdit,        // F1+B1 (was F1+A2)
+  AccentEdit,       // F1+B2 (was F1+A3)
+  AttackEdit,       // F1+B3 (unchanged)
+  DecayEdit,        // F1+B4 (unchanged)
+  DistortionEdit,   // F1+B5 (unchanged)
+  OverdriveEdit,    // F1+B6 (unchanged)
+  SaturatorEdit,    // F1+B7 (unchanged)
+  TuningEdit,       // F1+B8 (unchanged)
 };
 
 extern const char* synthEditModeNames[16];
