@@ -50,6 +50,9 @@ void handlePot(uint16_t potVal)
 	case Syn2:
 		midiCC = synthEditCC[currentEditMode];
 		break;
+	case Drm:
+		midiCC = drumEditCC[currentDrumEditMode];
+		break;
 	default:
 		return; // No action for other modes
 	}

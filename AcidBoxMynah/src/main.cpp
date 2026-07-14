@@ -75,6 +75,12 @@ bool anyStepButtonHeld = false;
 bool sdCardAvailable = false;
 volatile bool ledsDirty = true;
 bool refreshOLED = false;
+
+// Voice mute state (toggled by double-click on F2/F3/F4)
+bool muteSynth1 = false;
+bool muteSynth2 = false;
+bool muteDrums = false;
+
 // Audio buffers of all kinds
 volatile uint8_t current_gen_buf = 0; // set of buffers for generation
 volatile uint8_t current_out_buf = 1 - 0; // set of buffers for output
@@ -493,12 +499,15 @@ void neopixelInit()
 void updateLEDS() {
   if (!ledsDirty) return;
 
-#ifdef JUKEBOX
+if (currentMode == MODE_JUKEBOX)
+{
   // In jukebox mode the neopixel visualizer drives the LEDs.
   // visualizerTick decays brightnesses, applies colours, and sets ledsDirty = true
   // for continuous animated updates on every UI tick.
   visualizerTick();
-#else
+}
+else
+{
   // Non-jukebox mode: show button states as dim white on held keys
   for (int i = 0; i < 16; i++) {
     if ((buttonStates >> i) & 0x01) {
@@ -507,7 +516,7 @@ void updateLEDS() {
       strip.SetPixelColor(i, RgbColor(0, 0, 0));
     }
   }
-#endif
+}
 
   // Show() uses hardware RMT — it transmits in the background
   // via the ESP32-S3 RMT peripheral without blocking the CPU.

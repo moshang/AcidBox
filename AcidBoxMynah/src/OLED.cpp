@@ -19,7 +19,7 @@ void oledInit()
     u8g2.begin();
     u8g2.clearBuffer();
 
-    u8g2.setFont(u8g2_font_helvB10_tf);
+    u8g2.setFont(u8g2_font_helvB12_tf);
     u8g2.setCursor(0, 20);
     u8g2.print("AcidBox");
 
@@ -30,20 +30,56 @@ void oledInit()
     u8g2.print(VERSION);
 
     u8g2.sendBuffer();
-    delay(1000);  // Hold splash for 1 second
+    delay(1000); // Hold splash for 1 second
 }
 
 void updateOLED()
 {
-    if (!refreshOLED) return;
-        
+    if (!refreshOLED)
+        return;
+
     u8g2.clearBuffer();
-    u8g2.setFont(u8g2_font_helvB12_tf);
-    u8g2.setCursor(0, 20);
+    u8g2.setFont(u8g2_font_helvB14_tf);
+    u8g2.setCursor(0, 25);
     u8g2.print(editTypeNames[currentEditType]);
-        //u8g2.setFont(u8g2_font_helvB12_tf);
-    u8g2.setCursor(0, 35);
-    u8g2.print(synthEditModeNames[currentEditMode]);
+
+    // Show mute indicator if current voice is muted
+    bool isMuted = false;
+    switch (currentEditType)
+    {
+    case Syn1:
+        isMuted = muteSynth1;
+        break;
+    case Syn2:
+        isMuted = muteSynth2;
+        break;
+    case Drm:
+        isMuted = muteDrums;
+        break;
+    default:
+        break;
+    }
+
+    u8g2.setFont(u8g2_font_helvB10_tf);
+    u8g2.setCursor(0, 45);
+    if (currentEditType == Drm)
+    {
+        u8g2.print(drumEditModeNames[currentDrumEditMode]);
+    }
+    else
+    {
+        u8g2.print(synthEditModeNames[currentEditMode]);
+    }
+
+    if (isMuted)
+    {
+        // u8g2.setFont(u8g2_font_streamline_all_t);
+        // u8g2.drawGlyph(65, 50, 326); // lock icon glyph
+        u8g2.setFont(u8g2_font_siji_t_6x10);
+        u8g2.drawGlyphX2(65, 50, 57423); // lock icon glyph
+        u8g2.setFont(u8g2_font_helvR14_tf);
+    }
+
     u8g2.sendBuffer();
     refreshOLED = false;
 }

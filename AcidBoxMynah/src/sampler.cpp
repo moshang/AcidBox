@@ -569,6 +569,14 @@ void Sampler::NoteOff( uint8_t note ) {
   // samplePlayer[j]->active = false;
 }
 
+void Sampler::allNotesOff() {
+  for (int i = 0; i < sampleInfoCount; i++) {
+    samplePlayer[i].active = false;
+    samplePlayer[i].samplePos = 0;
+    samplePlayer[i].samplePosF = 0.0f;
+  }
+}
+
 void Sampler::SetPlaybackSpeed( float value ) {
   value = pow( 2.0f, 4.0f * (value - 0.5) );
   DEBF( "SetPlaybackSpeed: %0.2f\n", value );

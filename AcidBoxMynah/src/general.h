@@ -76,6 +76,12 @@ extern const char* editTypeNames[4];
 extern const char* synthEditModeNames[16];
 extern const uint8_t midiChn[4];
 extern const uint8_t synthEditCC[16];
+
+// Voice mute state (toggled by double-click on F2/F3/F4)
+extern bool muteSynth1;
+extern bool muteSynth2;
+extern bool muteDrums;
+
 // Shared instances and variables
 extern Sampler Drums;
 extern SynthVoice Synth1;

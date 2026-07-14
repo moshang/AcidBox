@@ -3,6 +3,8 @@
 #include "general.h"
 #include "config.h"
 #include "midi_config.h"
+#include "synthvoice.h"
+#include "sampler.h"
 
 // ============================================================
 // Global instances
@@ -50,18 +52,12 @@ static inline uint32_t calc_16th_interval_us(float bpm) {
 // Helper: send note-off for all sequencer voices
 // ============================================================
 static void sequencer_all_notes_off() {
-  // Synth voices
-  midi_send_noteoff(SYNTH1_MIDI_CHAN, 0);
-  midi_send_noteoff(SYNTH2_MIDI_CHAN, 0);
-  handleNoteOff(SYNTH1_MIDI_CHAN, 0, 0);
-  handleNoteOff(SYNTH2_MIDI_CHAN, 0, 0);
+  // Synth voices — use allNotesOff() to force envelopes to IDLE and clear MVA
+  Synth1.allNotesOff();
+  Synth2.allNotesOff();
 
-  // Drum voices — send note-off across a range covering all drum instruments
-  for (uint8_t i = 0; i < 12; i++) {
-    uint8_t drumNote = current_drumkit + i;
-    midi_send_noteoff(DRUM_MIDI_CHAN, drumNote);
-    handleNoteOff(DRUM_MIDI_CHAN, drumNote, 0);
-  }
+  // Drum voices — stop all active sample players immediately
+  Drums.allNotesOff();
 }
 
 // ============================================================

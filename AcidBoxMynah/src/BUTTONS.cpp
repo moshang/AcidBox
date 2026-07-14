@@ -99,6 +99,29 @@ void updateButtons()
 	ledsDirty = true;
 }
 
+// ---------- DOUBLE-CLICK DETECTION ----------
+// Tracks the last release time for F2/F3/F4 to detect double-clicks.
+static uint32_t lastF2Release = 0;
+static uint32_t lastF3Release = 0;
+static uint32_t lastF4Release = 0;
+static const uint32_t DOUBLE_CLICK_MS = 300; // max ms between clicks to count as double-click
+
+// Returns true if a double-click is detected for the given button.
+// Must be called on button release. Updates the last-release timestamp.
+static bool isDoubleClick(uint8_t buttonNum) {
+    uint32_t now = millis();
+    uint32_t* lastRelease;
+    switch (buttonNum) {
+        case BTN_F2: lastRelease = &lastF2Release; break;
+        case BTN_F3: lastRelease = &lastF3Release; break;
+        case BTN_F4: lastRelease = &lastF4Release; break;
+        default: return false;
+    }
+    uint32_t elapsed = now - *lastRelease;
+    *lastRelease = now;
+    return (elapsed < DOUBLE_CLICK_MS);
+}
+
 // ---------- FORWARD DECLARATIONS ----------
 static bool handleF1Combos();
 static void handleFunctionButtons();
@@ -131,7 +154,7 @@ static bool handleF1Combos()
 	if (!isButtonPressed(BTN_F1))
 		return false;
 
-	// F1+STEP_1 through F1+STEP_4: set synth edit mode (only when allowed)
+	// F1+STEP_1 through F1+STEP_5: set edit mode (synth or drum depending on edit type)
 	const uint8_t F1_STEP_COUNT = 16;
 	for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + F1_STEP_COUNT; i++)
 	{
@@ -139,7 +162,13 @@ static bool handleF1Combos()
 		{
 			if (currentEditType < 2)
 			{
+				// Syn1 or Syn2: set synth edit mode
 				setSynthEditMode((SynthEditMode)i);
+			}
+			else if (currentEditType == Drm && i <= BTN_STEP_8)
+			{
+				// Drums: F1+A1-A8 sets drum edit mode
+				setDrumEditMode((DrumEditMode)(i - BTN_STEP_1));
 			}
 			return false; // don't block F8 release
 		}
@@ -164,21 +193,46 @@ static bool handleF1Combos()
 
 // ==================== FUNCTION BUTTON HANDLER ====================
 // Handles F2/F3/F4 releases: switch to Syn1/Syn2/Drm edit type.
+// Double-click toggles mute for the corresponding voice.
 static void handleFunctionButtons()
 {
 	if (isButtonJustReleased(BTN_F2))
 	{
-		setEditType(Syn1);
+		if (isDoubleClick(BTN_F2))
+		{
+			muteSynth1 = !muteSynth1;
+			refreshOLED = true;
+		}
+		else
+		{
+			setEditType(Syn1);
+		}
 	}
 
 	if (isButtonJustReleased(BTN_F3))
 	{
-		setEditType(Syn2);
+		if (isDoubleClick(BTN_F3))
+		{
+			muteSynth2 = !muteSynth2;
+			refreshOLED = true;
+		}
+		else
+		{
+			setEditType(Syn2);
+		}
 	}
 
 	if (isButtonJustReleased(BTN_F4))
 	{
-		setEditType(Drm);
+		if (isDoubleClick(BTN_F4))
+		{
+			muteDrums = !muteDrums;
+			refreshOLED = true;
+		}
+		else
+		{
+			setEditType(Drm);
+		}
 	}
 }
 

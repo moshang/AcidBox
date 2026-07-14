@@ -35,6 +35,7 @@ DEBF("Select note: %d\r\n", note);
     // Offset   for the Sample-Playback to cut the sample from the left
     void NoteOn( uint8_t note, uint8_t vol );
     void NoteOff( uint8_t note );
+    void allNotesOff();
     void SetPlaybackSpeed_Midi( uint8_t value ){  SetSoundPitch( (float) MIDI_NORM * value ); };
     void SetPlaybackSpeed( float value );
     void SetProgram( uint8_t prog );

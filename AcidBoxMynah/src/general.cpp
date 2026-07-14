@@ -13,18 +13,38 @@ float bpm = 130.0f;
 
 
 void drums_generate() {
+    if (muteDrums) {
+        // Zero out the drum buffers when muted
+        for (int i=0; i < DMA_BUF_LEN; i++){
+            drums_buf_l[current_gen_buf][i] = 0.0f;
+            drums_buf_r[current_gen_buf][i] = 0.0f;
+        }
+        return;
+    }
     for (int i=0; i < DMA_BUF_LEN; i++){
       Drums.Process( &drums_buf_l[current_gen_buf][i], &drums_buf_r[current_gen_buf][i] );      
     } 
 }
 
 void synth1_generate() {
+    if (muteSynth1) {
+        for (int i=0; i < DMA_BUF_LEN; i++){
+            synth1_buf[current_gen_buf][i] = 0.0f;
+        }
+        return;
+    }
     for (int i=0; i < DMA_BUF_LEN; i++){
       synth1_buf[current_gen_buf][i] = Synth1.getSample() ;      
     } 
 }
 
 void synth2_generate() {
+    if (muteSynth2) {
+        for (int i=0; i < DMA_BUF_LEN; i++){
+            synth2_buf[current_gen_buf][i] = 0.0f;
+        }
+        return;
+    }
     for (int i=0; i < DMA_BUF_LEN; i++){
       synth2_buf[current_gen_buf][i] = Synth2.getSample() ;      
     } 

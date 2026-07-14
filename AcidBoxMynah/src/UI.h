@@ -34,7 +34,25 @@ enum SynthEditMode {
 
 extern const char* synthEditModeNames[16];
 
+// Drum edit modes (F1+A1-A8 when editing drums)
+enum DrumEditMode {
+  DrumCutoffEdit,   // F1+A1: CC 74 cutoff
+  DrumResoEdit,     // F1+A2: CC 71 resonance
+  DrumSnToneEdit,   // F1+A3: CC 25 snare tone
+  DrumBDDecayEdit,  // F1+A4: CC 23 BD decay
+  DrumBDToneEdit,   // F1+A5: CC 21 BD tone
+  DrumDelayEdit,    // F1+A6: CC 92 delay send
+  DrumReverbEdit,   // F1+A7: CC 91 reverb send
+  DrumVolumeEdit,   // F1+A8: CC 7 volume
+};
+
+extern const char* drumEditModeNames[8];
+extern const uint8_t drumEditCC[8];
+
+extern DrumEditMode currentDrumEditMode;
+
 void setEditType(EditType editType);
 void setSynthEditMode(SynthEditMode mode);
+void setDrumEditMode(DrumEditMode mode);
 
 #endif
