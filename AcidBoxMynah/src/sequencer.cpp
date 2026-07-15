@@ -119,7 +119,9 @@ void setMode(PlaybackMode newMode) {
 void sequencer_start() {
   if (globalSeq.isPlaying) return;
   globalSeq.isPlaying = true;
-  globalSeq.currentStep = 0;
+  // Set currentStep to 15 so the first advance-before-play in sequencer_tick()
+  // lands on step 0 — this keeps the playhead in sync with the audio.
+  globalSeq.currentStep = 15;
   lastTickUs = micros();
   nextTickIntervalUs = calc_16th_interval_us(globalSeq.bpm);
 }
@@ -155,6 +157,16 @@ void sequencer_toggle_play() {
 // Sends MIDI note-on/off for the current step's events.
 // ============================================================
 uint32_t sequencer_tick() {
+  // --- Advance step FIRST (playhead correction) ---
+  // Advance BEFORE playing so that globalSeq.currentStep always points to the
+  // step that IS playing, not the next step. This keeps the playhead display
+  // synchronised with the audio.
+  uint8_t nextStep = globalSeq.currentStep + 1;
+  if (nextStep >= 16) {
+    nextStep = 0;
+  }
+  globalSeq.currentStep = nextStep;
+
   // --- Synth 1 ---
   // Match jukebox instr_noteon_raw behaviour:
   //   - Always note-off before note-on (or note-on then note-off for glide)
@@ -262,13 +274,6 @@ uint32_t sequencer_tick() {
     }
   }
 
-  // --- Advance step ---
-  uint8_t nextStep = globalSeq.currentStep + 1;
-  if (nextStep >= 16) {
-    nextStep = 0;
-  }
-  globalSeq.currentStep = nextStep;
-
   // --- Calculate interval until the next tick (with swing) ---
   uint32_t baseInterval = calc_16th_interval_us(globalSeq.bpm);
 
@@ -282,19 +287,21 @@ uint32_t sequencer_tick() {
   //   Odd→even step (this step = odd index):  interval = T - d
   float swingRatio = (globalSeq.swing - 50.0f) / 50.0f;
   if (globalSeq.currentStep & 1) {
-    // This is an odd-indexed step (we already advanced, so currentStep is the *next* step).
-    // In the pattern above, if we just played an odd step and the *next* step is even,
-    // the interval from odd→even should be T - d.
-    // wait — we've already advanced currentStep. The interval we calculate here is from
-    // the step we just played (prevStep) to currentStep.
-    // If currentStep is odd (1, 3, 5...), then prevStep was even (0, 2, 4...).
-    // The even→odd interval is T + d.
-    nextTickIntervalUs = baseInterval + (uint32_t)((float)baseInterval * swingRatio);
-  } else {
-    // currentStep is even (0, 2, 4...), prevStep was odd (15, 1, 3...).
-    // The odd→even interval is T - d.
-    // For step 0 after step 15: also treat as odd→even (which it is).
+    // This is an odd-indexed step. Since we advance before playing,
+    // currentStep is the step we just advanced to. If currentStep is
+    // odd (1, 3, 5...), then the previous step (prevStep) was even (0, 2, 4...).
+    // The even→odd interval is T + d — this is the interval for the step
+    // we just advanced to (currentStep).
+    // After advance, currentStep is the step being played. The returned
+    // interval is the duration this step will play before advancing to the next.
+    // Step = odd: we arrived here from an even step (even→odd = T+d).
+    // Now we need the odd→even interval = T - d for this odd step's duration.
     nextTickIntervalUs = baseInterval - (uint32_t)((float)baseInterval * swingRatio);
+  } else {
+    // This is an even-indexed step. currentStep is even (0, 2, 4...).
+    // The previous step was odd (15, 1, 3...) — the odd→even interval is T - d.
+    // Now we need the even→odd interval = T + d for this even step's duration.
+    nextTickIntervalUs = baseInterval + (uint32_t)((float)baseInterval * swingRatio);
   }
 
   return nextTickIntervalUs;
@@ -326,9 +333,9 @@ void sequencer_service() {
       uint32_t baseInterval = calc_16th_interval_us(globalSeq.bpm);
       float swingRatio = (globalSeq.swing - 50.0f) / 50.0f;
       if (globalSeq.currentStep & 1) {
-        nextTickIntervalUs = baseInterval + (uint32_t)((float)baseInterval * swingRatio);
-      } else {
         nextTickIntervalUs = baseInterval - (uint32_t)((float)baseInterval * swingRatio);
+      } else {
+        nextTickIntervalUs = baseInterval + (uint32_t)((float)baseInterval * swingRatio);
       }
     }
 
@@ -371,4 +378,14 @@ void sequencer_load_drum_pattern(DrumPattern* dst,
     if (crash[i] > 0)  mask |= (1 << 8);
     dst->steps[i] = mask;
   }
+}
+
+// ============================================================
+// Drum step editing
+// ============================================================
+void sequencer_toggle_drum_step(uint8_t step, uint16_t laneMask) {
+  if (step >= 16) return;
+  if (laneMask == 0) return;
+  // Toggle the bit for this lane at the given step
+  globalSeq.drum.steps[step] ^= laneMask;
 }

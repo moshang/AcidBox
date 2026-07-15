@@ -455,6 +455,10 @@ static void instr_noteon(byte instr, byte value, byte do_glide, byte do_accent) 
 */
 
 void sequencer_step(byte step) {
+  // Keep the playhead display in sync: update globalSeq.currentStep to the
+  // step that is about to be played.
+  globalSeq.currentStep = step;
+
 #ifdef MIDI_RAMPS
   do_midi_ramps();
 #endif

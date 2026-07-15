@@ -52,8 +52,14 @@ extern const uint8_t drumEditCC[8];
 
 extern DrumEditMode currentDrumEditMode;
 
+// Drum lane switching (F4+STEP in sequencer mode)
+extern const char* drumLaneNames[16];
+extern uint16_t currentDrumLane;      // bitmask for the current drum lane (e.g. 1<<0 = BD)
+extern uint8_t currentDrumLaneIndex;  // 0-15 index into drumLaneNames
+
 void setEditType(EditType editType);
 void setSynthEditMode(SynthEditMode mode);
 void setDrumEditMode(DrumEditMode mode);
+void setDrumLane(uint8_t laneIndex);  // 0-15, maps to 1<<laneIndex
 
 #endif

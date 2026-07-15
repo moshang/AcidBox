@@ -50,6 +50,29 @@ const uint8_t drumEditCC[8] = {
     CC_808_VOLUME       // DrumVolumeEdit: CC 7
 };
 
+// Drum lane names (matching bit positions from sequencer.h)
+const char* drumLaneNames[16] = {
+    "BD",       // 1 << 0  (kick)
+    "SD",       // 1 << 1  (snare)
+    "CH",       // 1 << 2  (closed hi-hat)
+    "OH",       // 1 << 3  (open hi-hat)
+    "CLAP",     // 1 << 4  (clap)
+    "LT",       // 1 << 5  (low tom)
+    "MT",       // 1 << 6  (mid tom)
+    "HT",       // 1 << 7  (high tom)
+    "CR",       // 1 << 8  (crash)
+    "RIM",      // 1 << 9  (rimshot)
+    "MAR",      // 1 << 10 (maraca/shaker)
+    "CLAV",     // 1 << 11 (claves)
+    "COW",      // 1 << 12 (cowbell)
+    "CY",       // 1 << 13 (cymbal)
+    "CONG",     // 1 << 14 (conga)
+    "TIMB"      // 1 << 15 (timbale)
+};
+
+uint16_t currentDrumLane = 1 << 0;      // default: BD
+uint8_t  currentDrumLaneIndex = 0;      // default: 0 = BD
+
 const uint8_t midiChn[4]
 {
     SYNTH1_MIDI_CHAN,
@@ -77,5 +100,15 @@ void setSynthEditMode(SynthEditMode mode )
 void setDrumEditMode(DrumEditMode mode)
 {
     currentDrumEditMode = mode;
+    refreshOLED = true;
+}
+
+void setDrumLane(uint8_t laneIndex)
+{
+    if (laneIndex >= 16) return;
+    currentDrumLaneIndex = laneIndex;
+    currentDrumLane = 1 << laneIndex;
+    // Update drumViewMask in main.cpp so the neopixel display shows the right lane
+    drumViewMask = currentDrumLane;
     refreshOLED = true;
 }

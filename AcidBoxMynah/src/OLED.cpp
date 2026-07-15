@@ -4,6 +4,7 @@
 #include "config.h"
 #include "general.h"
 #include "UI.h"
+#include "sequencer.h"
 
 // OLED display (128x64, hardware I2C) — same SSD1306 as MYNAH/RGB
 // HW_I2C constructor only takes rotation + reset pin. I2C pins are set via Wire.begin().
@@ -64,7 +65,18 @@ void updateOLED()
     u8g2.setCursor(0, 45);
     if (currentEditType == Drm)
     {
-        u8g2.print(drumEditModeNames[currentDrumEditMode]);
+        // In sequencer (EDIT) mode:
+        //   - If F1 is held, show the drum edit parameter name (user is changing it)
+        //   - Otherwise show the drum lane name (e.g. "BD", "SD", "CH")
+        // In jukebox mode show the drum edit parameter name
+        if (currentMode == MODE_EDIT && !isButtonPressed(BTN_F1))
+        {
+            u8g2.print(drumLaneNames[currentDrumLaneIndex]);
+        }
+        else
+        {
+            u8g2.print(drumEditModeNames[currentDrumEditMode]);
+        }
     }
     else
     {

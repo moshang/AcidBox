@@ -94,6 +94,9 @@ void sequencer_toggle_play();
 // Checks micros() and fires sequencer_tick() at the correct interval.
 void sequencer_service();
 
+// Toggle a drum step on/off for a specific lane (bitmask)
+void sequencer_toggle_drum_step(uint8_t step, uint16_t laneMask);
+
 // Fill a SynthPattern from a legacy AcidBanger Pattern (notes, accent, glide bitfields)
 void sequencer_load_synth_pattern(SynthPattern* dst, const uint8_t* notes, uint16_t accentBits, uint16_t glideBits);
 

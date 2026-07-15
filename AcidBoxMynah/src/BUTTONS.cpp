@@ -123,7 +123,9 @@ static bool isDoubleClick(uint8_t buttonNum) {
 }
 
 // ---------- FORWARD DECLARATIONS ----------
+static bool handleStandaloneDrumSteps();
 static bool handleF1Combos();
+static bool handleF4DrumLaneCombos();
 static void handleFunctionButtons();
 
 // ---------- PROCESS BUTTON EVENTS ----------
@@ -135,6 +137,18 @@ void processButtons()
 		return;
 	}
 
+	// F4+STEP drum lane switching (sequencer mode, drums edit type)
+	if (handleF4DrumLaneCombos())
+	{
+		return;
+	}
+
+	// Standalone step press in drums mode: toggle step active/inactive
+	if (handleStandaloneDrumSteps())
+	{
+		return;
+	}
+
 	// F8 release: toggle sequencer start/stop
 	if (isButtonJustReleased(BTN_F8))
 	{
@@ -142,6 +156,40 @@ void processButtons()
 	}
 
 	handleFunctionButtons();
+}
+
+// ==================== STANDALONE STEP BUTTON HANDLER ====================
+// Handles STEP_1..STEP_16 pressed alone (no function button held) in drums mode.
+// Toggles the step on/off for the current drum lane.
+// Must be called before F8 release handler and after F1/F4 combo handlers
+// have consumed their combo events.
+static bool handleStandaloneDrumSteps()
+{
+	// Only in drums edit type + EDIT mode
+	if (currentMode != MODE_EDIT || currentEditType != Drm)
+		return false;
+
+	// Skip if any function button (F1-F8) is held — combos take priority
+	if (isButtonPressed(BTN_F1) || isButtonPressed(BTN_F2) ||
+		isButtonPressed(BTN_F3) || isButtonPressed(BTN_F4) ||
+		isButtonPressed(BTN_F5) || isButtonPressed(BTN_F6) ||
+		isButtonPressed(BTN_F7) || isButtonPressed(BTN_F8))
+		return false;
+
+	// Check for a step button just pressed
+	for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+	{
+		if (isButtonJustPressed(i))
+		{
+			uint8_t step = i - BTN_STEP_1; // 0-15
+			sequencer_toggle_drum_step(step, currentDrumLane);
+			refreshOLED = true;
+			ledsDirty = true;
+			return true;
+		}
+	}
+
+	return false;
 }
 
 // ==================== F1 COMBO HANDLER ====================
@@ -234,6 +282,34 @@ static void handleFunctionButtons()
 			setEditType(Drm);
 		}
 	}
+}
+
+// ==================== F4 DRUM LANE SWITCHING ====================
+// Handles F4+STEP_1..STEP_16: switch drum lane when in sequencer mode (MODE_EDIT)
+// and drums (Drm) edit type is selected.
+// Returns true if the event was consumed.
+static bool handleF4DrumLaneCombos()
+{
+	// F4 not held: nothing to do
+	if (!isButtonPressed(BTN_F4))
+		return false;
+
+	// Only works in sequencer (EDIT) mode when drums are the current edit type
+	if (currentMode != MODE_EDIT || currentEditType != Drm)
+		return false;
+
+	// F4+STEP_1 through F4+STEP_16: switch drum lane
+	for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+	{
+		if (isButtonJustPressed(i))
+		{
+			uint8_t laneIndex = i - BTN_STEP_1; // 0-15
+			setDrumLane(laneIndex);
+			return true;
+		}
+	}
+
+	return false;
 }
 
 // ---------- DEBUG: PRINT BUTTON STATES ----------

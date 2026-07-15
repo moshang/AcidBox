@@ -148,7 +148,11 @@ void visualizerNoteOff(uint8_t voice, uint8_t note);
 
 // ---- SEQUENCER PATTERN DISPLAY (EDIT Mode) ----
 extern uint16_t drumViewMask;  // which drum bit to display on the neopixel grid in sequencer mode (default: 1<<0 = BD)
+extern uint16_t currentDrumLane;
+extern uint8_t  currentDrumLaneIndex;
+extern const char* drumLaneNames[16];
 void sequencerDisplayTick();   // render the current pattern on the neopixels
+void setDrumLane(uint8_t laneIndex);  // 0-15, maps to 1<<laneIndex
 
 // Utility math and lookup functions defined as inline
 inline float fclamp(float in, float min, float max) {
