@@ -76,7 +76,7 @@ void updateOLED()
         // u8g2.setFont(u8g2_font_streamline_all_t);
         // u8g2.drawGlyph(65, 50, 326); // lock icon glyph
         u8g2.setFont(u8g2_font_siji_t_6x10);
-        u8g2.drawGlyphX2(65, 50, 57423); // lock icon glyph
+        u8g2.drawGlyphX2(73, 27, 57423); // mute icon glyph
         u8g2.setFont(u8g2_font_helvR14_tf);
     }
 

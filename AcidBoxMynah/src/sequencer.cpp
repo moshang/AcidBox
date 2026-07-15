@@ -23,6 +23,10 @@ extern uint8_t current_drumkit;
 static uint32_t lastTickUs = 0;        // micros() when the last 16th-note tick fired
 static uint32_t nextTickIntervalUs = 0; // microseconds to wait until the next tick
 
+// Track last note played per synth channel (matching jukebox's playing_note)
+static uint8_t lastNote1 = 0;
+static uint8_t lastNote2 = 0;
+
 // ============================================================
 // Drum voice MIDI note mappings (matching AcidBanger.cpp)
 // ============================================================
@@ -58,6 +62,10 @@ static void sequencer_all_notes_off() {
 
   // Drum voices — stop all active sample players immediately
   Drums.allNotesOff();
+
+  // Reset last note tracking
+  lastNote1 = 0;
+  lastNote2 = 0;
 }
 
 // ============================================================
@@ -76,6 +84,8 @@ void sequencer_init() {
   currentMode = MODE_JUKEBOX;
   lastTickUs = 0;
   nextTickIntervalUs = 0;
+  lastNote1 = 0;
+  lastNote2 = 0;
 }
 
 // ============================================================
@@ -146,27 +156,76 @@ void sequencer_toggle_play() {
 // ============================================================
 uint32_t sequencer_tick() {
   // --- Synth 1 ---
-  SynthStep& s1 = globalSeq.synth1.steps[globalSeq.currentStep];
-  if (s1.active && s1.note > 0) {
-    // Note-on with appropriate velocity (accent = louder)
-    uint8_t vel = s1.accent ? 120 : 80;
-    midi_send_noteon(SYNTH1_MIDI_CHAN, s1.note, vel);
-    handleNoteOn(SYNTH1_MIDI_CHAN, s1.note, vel);
-  } else {
-    // Note-off any previously playing note on synth1
-    midi_send_noteoff(SYNTH1_MIDI_CHAN, 0);
-    handleNoteOff(SYNTH1_MIDI_CHAN, 0, 0);
+  // Match jukebox instr_noteon_raw behaviour:
+  //   - Always note-off before note-on (or note-on then note-off for glide)
+  //   - Track lastNote so MVA stack stays clean (mva1.n == 1) for non-slide notes
+  {
+    SynthStep& s1 = globalSeq.synth1.steps[globalSeq.currentStep];
+    if (s1.active && s1.note > 0) {
+      uint8_t vel = s1.accent ? 120 : 80;
+      if (lastNote1 != 0) {
+        if (s1.slide) {
+          // Fingered glide: note-on first, then note-off
+          midi_send_noteon(SYNTH1_MIDI_CHAN, s1.note, vel);
+          handleNoteOn(SYNTH1_MIDI_CHAN, s1.note, vel);
+          midi_send_noteoff(SYNTH1_MIDI_CHAN, lastNote1);
+          handleNoteOff(SYNTH1_MIDI_CHAN, lastNote1, 0);
+        } else {
+          // Normal: note-off first, then note-on
+          midi_send_noteoff(SYNTH1_MIDI_CHAN, lastNote1);
+          handleNoteOff(SYNTH1_MIDI_CHAN, lastNote1, 0);
+          midi_send_noteon(SYNTH1_MIDI_CHAN, s1.note, vel);
+          handleNoteOn(SYNTH1_MIDI_CHAN, s1.note, vel);
+        }
+      } else {
+        // No previous note playing
+        midi_send_noteon(SYNTH1_MIDI_CHAN, s1.note, vel);
+        handleNoteOn(SYNTH1_MIDI_CHAN, s1.note, vel);
+      }
+      lastNote1 = s1.note;
+    } else {
+      // Inactive step — send note-off if we had a note playing
+      if (lastNote1 != 0) {
+        midi_send_noteoff(SYNTH1_MIDI_CHAN, lastNote1);
+        handleNoteOff(SYNTH1_MIDI_CHAN, lastNote1, 0);
+        lastNote1 = 0;
+      }
+    }
   }
 
   // --- Synth 2 ---
-  SynthStep& s2 = globalSeq.synth2.steps[globalSeq.currentStep];
-  if (s2.active && s2.note > 0) {
-    uint8_t vel = s2.accent ? 120 : 80;
-    midi_send_noteon(SYNTH2_MIDI_CHAN, s2.note, vel);
-    handleNoteOn(SYNTH2_MIDI_CHAN, s2.note, vel);
-  } else {
-    midi_send_noteoff(SYNTH2_MIDI_CHAN, 0);
-    handleNoteOff(SYNTH2_MIDI_CHAN, 0, 0);
+  {
+    SynthStep& s2 = globalSeq.synth2.steps[globalSeq.currentStep];
+    if (s2.active && s2.note > 0) {
+      uint8_t vel = s2.accent ? 120 : 80;
+      if (lastNote2 != 0) {
+        if (s2.slide) {
+          // Fingered glide: note-on first, then note-off
+          midi_send_noteon(SYNTH2_MIDI_CHAN, s2.note, vel);
+          handleNoteOn(SYNTH2_MIDI_CHAN, s2.note, vel);
+          midi_send_noteoff(SYNTH2_MIDI_CHAN, lastNote2);
+          handleNoteOff(SYNTH2_MIDI_CHAN, lastNote2, 0);
+        } else {
+          // Normal: note-off first, then note-on
+          midi_send_noteoff(SYNTH2_MIDI_CHAN, lastNote2);
+          handleNoteOff(SYNTH2_MIDI_CHAN, lastNote2, 0);
+          midi_send_noteon(SYNTH2_MIDI_CHAN, s2.note, vel);
+          handleNoteOn(SYNTH2_MIDI_CHAN, s2.note, vel);
+        }
+      } else {
+        // No previous note playing
+        midi_send_noteon(SYNTH2_MIDI_CHAN, s2.note, vel);
+        handleNoteOn(SYNTH2_MIDI_CHAN, s2.note, vel);
+      }
+      lastNote2 = s2.note;
+    } else {
+      // Inactive step — send note-off if we had a note playing
+      if (lastNote2 != 0) {
+        midi_send_noteoff(SYNTH2_MIDI_CHAN, lastNote2);
+        handleNoteOff(SYNTH2_MIDI_CHAN, lastNote2, 0);
+        lastNote2 = 0;
+      }
+    }
   }
 
   // --- Drums ---

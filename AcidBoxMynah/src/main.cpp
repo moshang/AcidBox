@@ -271,6 +271,10 @@ void uiCoreTask(void* parameter) {
   }
 }
 
+// ---- SEQUENCER PATTERN DISPLAY (EDIT Mode) ----
+// Default: show BD (kick) lane
+uint16_t drumViewMask = 1 << 0;
+
 // ---- NEOPIXEL VISUALIZER STATE & FUNCTIONS ----
 // 16 LED states, one per physical LED on the ring
 LedState ledStates[16];
@@ -466,6 +470,84 @@ void visualizerNoteOn(uint8_t voice, uint8_t note, bool accent, bool slide) {
   }
 }
 
+// ---- SEQUENCER PATTERN DISPLAY ----
+// Two rows of 8 NeoPixels:
+//   Top row:    LED 0-7  = steps 1-8  (step indices 0-7)
+//   Bottom row: LED 8-15 = steps 9-16 (step indices 8-15)
+// Step 1 is top-left (LED 0), step 16 is bottom-right (LED 15)
+void sequencerDisplayTick() {
+  for (int step = 0; step < 16; step++) {
+    bool active = false;
+    RgbColor stepColor(0, 0, 0); // off by default
+
+    // Determine step activity and color based on current edit type
+    switch (currentEditType) {
+      case Syn1: {
+        SynthStep& s = globalSeq.synth1.steps[step];
+        if (s.active && s.note > 0) {
+          active = true;
+          stepColor = RgbColor(0, 200, 220); // cyan
+        }
+        break;
+      }
+      case Syn2: {
+        SynthStep& s = globalSeq.synth2.steps[step];
+        if (s.active && s.note > 0) {
+          active = true;
+          stepColor = RgbColor(220, 0, 200); // magenta
+        }
+        break;
+      }
+      case Drm: {
+        uint16_t mask = globalSeq.drum.steps[step];
+        if (mask & drumViewMask) {
+          active = true;
+          // Color based on which drum lane is being viewed
+          switch (drumViewMask) {
+            case 1 << 0:  stepColor = RgbColor(255, 255, 255); break; // BD  - white
+            case 1 << 1:  stepColor = RgbColor(255, 220, 0);   break; // SD  - yellow
+            case 1 << 2:  stepColor = RgbColor(0, 255, 60);    break; // CH  - green
+            case 1 << 3:  stepColor = RgbColor(0, 220, 40);    break; // OH  - green
+            case 1 << 4:  stepColor = RgbColor(255, 120, 0);   break; // CLAP- orange
+            case 1 << 5:  stepColor = RgbColor(180, 100, 60);  break; // LT  - brown
+            case 1 << 6:  stepColor = RgbColor(200, 130, 80);  break; // MT  - tan
+            case 1 << 7:  stepColor = RgbColor(220, 160, 100); break; // HT  - light tan
+            case 1 << 8:  stepColor = RgbColor(200, 200, 200); break; // CR  - grey
+            case 1 << 9:  stepColor = RgbColor(180, 180, 255); break; // RIM - light blue
+            case 1 << 10: stepColor = RgbColor(255, 200, 0);   break; // MAR - gold
+            case 1 << 11: stepColor = RgbColor(200, 100, 0);   break; // CLAV- dark orange
+            case 1 << 12: stepColor = RgbColor(255, 150, 50);  break; // COW - pumpkin
+            case 1 << 13: stepColor = RgbColor(255, 255, 100); break; // CY  - pale yellow
+            case 1 << 14: stepColor = RgbColor(150, 80, 40);   break; // CONG- brown
+            case 1 << 15: stepColor = RgbColor(180, 60, 60);   break; // TIMB- rust
+            default:      stepColor = RgbColor(200, 200, 200); break; // default grey
+          }
+        }
+        break;
+      }
+      default:
+        break;
+    }
+
+    // --- Playhead (blue) overrides everything ---
+    if (step == globalSeq.currentStep && globalSeq.isPlaying) {
+      // Playhead: bright blue
+      strip.SetPixelColor(step, RgbColor(0, 0, 255));
+    } else if (active) {
+      // Active step: dimmed to ~35% so pattern is visible but doesn't overwhelm
+      strip.SetPixelColor(step, RgbColor(
+        (uint8_t)((float)stepColor.R * 0.35f),
+        (uint8_t)((float)stepColor.G * 0.35f),
+        (uint8_t)((float)stepColor.B * 0.35f)
+      ));
+    } else {
+      // Inactive step: off
+      strip.SetPixelColor(step, RgbColor(0, 0, 0));
+    }
+  }
+  ledsDirty = true;
+}
+
 void visualizerNoteOff(uint8_t voice, uint8_t note) {
   if (voice < 2) {
     uint8_t arcStart, arcEnd;
@@ -508,14 +590,9 @@ if (currentMode == MODE_JUKEBOX)
 }
 else
 {
-  // Non-jukebox mode: show button states as dim white on held keys
-  for (int i = 0; i < 16; i++) {
-    if ((buttonStates >> i) & 0x01) {
-      strip.SetPixelColor(i, RgbColor(20, 20, 20));
-    } else {
-      strip.SetPixelColor(i, RgbColor(0, 0, 0));
-    }
-  }
+  // Sequencer/EDIT mode: show the pattern steps on the neopixel grid
+  // Two rows of 8 LEDs = direct 1:1 mapping to 16 steps
+  sequencerDisplayTick();
 }
 
   // Show() uses hardware RMT — it transmits in the background
