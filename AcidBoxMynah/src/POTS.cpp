@@ -2,11 +2,32 @@
 #include "config.h"
 #include "general.h"
 #include "midi_handler.h"
+#include "sequencer.h"
+
 // Potentiometer state variables
 static uint8_t potAvgIndex = 0;
 static uint16_t potValAvg[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 static uint16_t lastPotVal = 0;
 static uint8_t potUnlocked = 0;
+
+// Pot locking (for mode-change protection)
+static bool potLocked = false;           // true when pot is locked after a mode change
+static uint16_t potLockPos = 0;          // pot position at lock time
+
+// Step pitch edit state
+static int8_t lastEditedStep = -1;     // which step we last edited with the pot (-1 = none)
+static uint8_t lastEditNote = 0;       // last note we set for hysteresis
+
+// ---------- LOCK POT ----------
+// Lock the pot so it ignores small movements after a mode change.
+// The pot will only respond again once the user moves it past POT_LOCK_THRESHOLD
+// from the position it was at when locked.
+void potLock()
+{
+    potLocked = true;
+    potLockPos = lastPotVal;  // use the last known pot value as the lock reference
+    potUnlocked = 0;          // also clear the normal unlock timer
+}
 
 // ---------- UPDATE POTENTIOMETER ----------
 void updatePot()
@@ -22,7 +43,24 @@ void updatePot()
 	}
 	uint16_t potVal = sum >> 3;
 
-	// Check if pot moved enough to trigger unlock
+	// If pot is locked (due to a mode change), check if it has moved enough to unlock
+	if (potLocked)
+	{
+		int16_t movement = abs((int)potVal - (int)potLockPos);
+		if (movement > POT_LOCK_THRESHOLD)
+		{
+			// Unlock: the user has deliberately moved the pot past the threshold
+			potLocked = false;
+			lastPotVal = potVal;
+			potUnlocked = 50; // POT_LOCK_TIME equivalent
+			ledsDirty = true;
+			handlePot(potVal);
+		}
+		// If still locked, do nothing (ignore the pot entirely)
+		return;
+	}
+
+	// Normal operation: check if pot moved enough to trigger update
 	if (abs((int)potVal - (int)lastPotVal) > POT_THRESHOLD)
 	{
 		potUnlocked = 50; // POT_LOCK_TIME equivalent
@@ -39,10 +77,58 @@ void updatePot()
 // ---------- HANDLE POT VALUE ----------
 void handlePot(uint16_t potVal)
 {
-	// Map 0-511 to 0.0-1.0 for compatibility with AcidBox's param[] system
-	float normalizedVal = (float)potVal / 4095.0f;
-	if (normalizedVal > 1.0f)
-		normalizedVal = 1.0f;
+	// Check if we're in EDIT mode with Syn1 or Syn2 and a step button is held
+	if (currentMode == MODE_EDIT && (currentEditType == Syn1 || currentEditType == Syn2))
+	{
+		// Look for which step button is currently held (bits 0-15 of buttonStates)
+		int8_t heldStep = -1;
+		uint8_t heldCount = 0;
+		for (uint8_t i = 0; i < 16; i++)
+		{
+			if (buttonStates & (1UL << i))
+			{
+				heldStep = i;
+				heldCount++;
+			}
+		}
+
+		// Only edit pitch if exactly one step button is held
+		if (heldCount == 1 && heldStep >= 0)
+		{
+			// Map pot 0-4095 to note range 36-71 (C2 to G4)
+			uint8_t rawNote = 36 + (uint8_t)((float)potVal / 4095.0f * 35.0f); // 36..71
+			if (rawNote > 71) rawNote = 71;
+
+			// Quantize to current scale
+			uint8_t quantizedNote = quantizeNoteToScale(rawNote, currentScale);
+
+			// Apply hysteresis: only update if note changed or step changed
+			if (heldStep != lastEditedStep || quantizedNote != lastEditNote)
+			{
+				sequencer_set_synth_step_note((uint8_t)heldStep, quantizedNote, currentEditType);
+				lastEditedStep = heldStep;
+				lastEditNote = quantizedNote;
+				stepPotAdjusted = true; // mark that pot was adjusted so button release won't toggle
+				refreshOLED = true;
+				ledsDirty = true;
+			}
+			return; // handled as pitch edit
+		}
+		else
+		{
+			// No step held or multiple steps — clear edit state
+			lastEditedStep = -1;
+			lastEditNote = 0;
+		}
+	}
+	else
+	{
+		// Not in synth step edit mode — clear edit state
+		lastEditedStep = -1;
+		lastEditNote = 0;
+	}
+
+	// Normal param CC handling (when not editing step pitch)
 	uint8_t midiCC = 0;
 	switch (currentEditType)
 	{
@@ -56,6 +142,11 @@ void handlePot(uint16_t potVal)
 	default:
 		return; // No action for other modes
 	}
+
+	// Map 0-4095 to 0.0-1.0 for compatibility with AcidBox's param[] system
+	float normalizedVal = (float)potVal / 4095.0f;
+	if (normalizedVal > 1.0f)
+		normalizedVal = 1.0f;
 
 	handleCC(midiChn[currentEditType], midiCC, (uint8_t)(normalizedVal * 127.0f));
 }

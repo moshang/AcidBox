@@ -72,6 +72,7 @@ NeoPixelBusLg<NeoGrbFeature, Neo800KbpsMethod> strip(LED_COUNT, LED_PIN);
 volatile uint32_t buttonStates = 0;
 volatile uint32_t lastButtonStates = 0;
 bool anyStepButtonHeld = false;
+bool stepPotAdjusted = false;
 bool sdCardAvailable = false;
 volatile bool ledsDirty = true;
 bool refreshOLED = false;
@@ -529,8 +530,14 @@ void sequencerDisplayTick() {
         break;
     }
 
-    // --- Playhead (blue) overrides everything ---
-    if (step == globalSeq.currentStep && globalSeq.isPlaying) {
+    // --- Check if this step's button is physically held down ---
+    bool stepHeld = (buttonStates & (1UL << step)) != 0;
+
+    // --- Playhead (blue) overrides everything except held step ---
+    if (stepHeld) {
+      // Held step: bright white (overrides playhead and pattern)
+      strip.SetPixelColor(step, RgbColor(255, 255, 255));
+    } else if (step == globalSeq.currentStep && globalSeq.isPlaying) {
       // Playhead: bright blue
       strip.SetPixelColor(step, RgbColor(0, 0, 255));
     } else if (active) {

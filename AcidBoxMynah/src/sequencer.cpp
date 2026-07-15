@@ -11,6 +11,7 @@
 // ============================================================
 SequencerState globalSeq;
 PlaybackMode    currentMode = MODE_JUKEBOX;
+uint16_t        currentScale = SCALE_CHROMATIC;  // default: all notes allowed
 
 // ============================================================
 // External references (defined in AcidBanger.cpp)
@@ -93,6 +94,10 @@ void sequencer_init() {
 // ============================================================
 void setMode(PlaybackMode newMode) {
   if (newMode == currentMode) return;
+
+  // Lock the pot when switching playback modes — the parameter values
+  // may differ between JUKEBOX and EDIT modes.
+  potLock();
 
   if (newMode == MODE_EDIT) {
     // Transition to EDIT mode: suspend jukebox generation
@@ -388,4 +393,138 @@ void sequencer_toggle_drum_step(uint8_t step, uint16_t laneMask) {
   if (laneMask == 0) return;
   // Toggle the bit for this lane at the given step
   globalSeq.drum.steps[step] ^= laneMask;
+}
+
+// ============================================================
+// Synth step editing
+// ============================================================
+void sequencer_toggle_synth_step(uint8_t step, EditType type) {
+  if (step >= 16) return;
+  
+  SynthPattern* pattern;
+  uint8_t midiChan;
+  if (type == Syn1) {
+    pattern = &globalSeq.synth1;
+    midiChan = SYNTH1_MIDI_CHAN;
+  } else if (type == Syn2) {
+    pattern = &globalSeq.synth2;
+    midiChan = SYNTH2_MIDI_CHAN;
+  } else {
+    return;
+  }
+  
+  SynthStep& s = pattern->steps[step];
+  
+  // Toggle: if active with a note -> deactivate (clear note too)
+  // If inactive -> activate with default note
+  if (s.active && s.note > 0) {
+    // Always send note-off when toggling a step off
+    midi_send_noteoff(midiChan, s.note);
+    handleNoteOff(midiChan, s.note, 0);
+    // Clear last note tracking if this was the note being played
+    if (type == Syn1 && lastNote1 == s.note) lastNote1 = 0;
+    if (type == Syn2 && lastNote2 == s.note) lastNote2 = 0;
+    s.active = false;
+    s.note = 0;
+  } else {
+    // Activate with a default note (mid-range, quantized to current scale)
+    s.active = true;
+    s.note = quantizeNoteToScale(60, currentScale); // default to C4 quantized
+    // Trigger the note so we can hear it
+    uint8_t vel = s.accent ? 120 : 80;
+    midi_send_noteon(midiChan, s.note, vel);
+    handleNoteOn(midiChan, s.note, vel);
+  }
+}
+
+void sequencer_set_synth_step_note(uint8_t step, uint8_t note, EditType type) {
+  if (step >= 16) return;
+  
+  SynthPattern* pattern;
+  uint8_t midiChan;
+  if (type == Syn1) {
+    pattern = &globalSeq.synth1;
+    midiChan = SYNTH1_MIDI_CHAN;
+  } else if (type == Syn2) {
+    pattern = &globalSeq.synth2;
+    midiChan = SYNTH2_MIDI_CHAN;
+  } else {
+    return;
+  }
+  
+  SynthStep& s = pattern->steps[step];
+  uint8_t oldNote = s.note;
+  s.note = note;
+  s.active = true; // Always force the step active when adjusting pitch via pot
+  
+  // Retrigger the note so we can hear pitch changes
+  // Use allNotesOff() to clear the MVA stack entirely, preventing the
+  // monophonic voice allocator from setting slide=true (which happens
+  // when mva1.n > 1 after note-off + note-on).
+  uint8_t vel = s.accent ? 120 : 80;
+  
+  if (type == Syn1) {
+    Synth1.allNotesOff();  // clears MVA stack, sets mva1.n = 0
+    midi_send_noteon(midiChan, s.note, vel);
+    handleNoteOn(midiChan, s.note, vel);
+  } else {
+    Synth2.allNotesOff();
+    midi_send_noteon(midiChan, s.note, vel);
+    handleNoteOn(midiChan, s.note, vel);
+  }
+  
+  // Update last note tracking
+  if (type == Syn1) lastNote1 = s.note;
+  if (type == Syn2) lastNote2 = s.note;
+}
+
+// ============================================================
+// Note quantization to scale
+// ============================================================
+// Given a MIDI note number and a 12-bit scale mask (bit 0 = C, bit 1 = C#, etc.),
+// find the nearest note that is in the scale.
+uint8_t quantizeNoteToScale(uint8_t note, uint16_t scaleMask) {
+  // If scale is chromatic or all bits set, no quantization needed
+  if (scaleMask == SCALE_CHROMATIC) return note;
+  
+  // Clamp to valid range
+  if (note > 127) note = 127;
+  
+  uint8_t octave = note / 12;
+  uint8_t semitone = note % 12;
+  
+  // If the current semitone is in the scale, return as-is
+  if (scaleMask & (1 << semitone)) {
+    return note;
+  }
+  
+  // Search upward and downward for the nearest scale note
+  for (uint8_t offset = 1; offset <= 6; offset++) {
+    // Check upward
+    int8_t upSemitone = semitone + offset;
+    int8_t upOctave = octave;
+    if (upSemitone >= 12) {
+      upSemitone -= 12;
+      upOctave++;
+    }
+    if (upOctave <= 10 && (scaleMask & (1 << upSemitone))) {
+      uint8_t result = upOctave * 12 + upSemitone;
+      if (result <= 127) return result;
+    }
+    
+    // Check downward
+    int8_t downSemitone = semitone - offset;
+    int8_t downOctave = octave;
+    if (downSemitone < 0) {
+      downSemitone += 12;
+      downOctave--;
+    }
+    if (downOctave >= 0 && (scaleMask & (1 << downSemitone))) {
+      uint8_t result = downOctave * 12 + downSemitone;
+      return result;
+    }
+  }
+  
+  // Fallback: return the original note
+  return note;
 }

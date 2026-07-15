@@ -56,7 +56,9 @@ const uint8_t POT_PINS[POT_NUM] = {34, 35, 36};
 
 // Potentiometer (single, for UI parameter control)
 #define POT_PIN         1
-#define POT_THRESHOLD   8
+#define POT_THRESHOLD   8       // Minimum movement to trigger a normal pot update
+#define POT_LOCK_THRESHOLD  32  // Movement required to unlock the pot after a mode change
+                                // (higher = more deliberate movement needed to prevent jumps)
 
 // 74HC165 Shift Register Pins (24 tactile switches)
 #define SR_DATA_PIN  3

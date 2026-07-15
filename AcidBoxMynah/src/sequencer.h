@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <stdint.h>
+#include "UI.h"
 
 // ============================================================
 // Data Structures for the 16-Step Sequencer
@@ -62,10 +63,21 @@ struct SequencerState {
 };
 
 // ============================================================
+// Scale definitions for note quantization
+// ============================================================
+// Bitmask of 12 semitones (bit 0 = C, bit 1 = C#, ..., bit 11 = B)
+#define SCALE_CHROMATIC  0x0FFF  // All 12 semitones
+#define SCALE_MAJOR      0x0AB5  // C D E F G A B
+#define SCALE_MINOR      0x08AE  // A B C D E F G (natural minor)
+#define SCALE_PENTATONIC 0x0296  // C D E G A
+#define SCALE_BLUES      0x02B6  // C Eb F F# G Bb
+
+// ============================================================
 // Global instances
 // ============================================================
 extern SequencerState globalSeq;
 extern PlaybackMode    currentMode;
+extern uint16_t        currentScale;  // active scale bitmask (default SCALE_CHROMATIC)
 
 // ============================================================
 // Sequencer API
@@ -96,6 +108,15 @@ void sequencer_service();
 
 // Toggle a drum step on/off for a specific lane (bitmask)
 void sequencer_toggle_drum_step(uint8_t step, uint16_t laneMask);
+
+// Toggle a synth step on/off for Syn1 or Syn2
+void sequencer_toggle_synth_step(uint8_t step, EditType type);
+
+// Set the note for a synth step
+void sequencer_set_synth_step_note(uint8_t step, uint8_t note, EditType type);
+
+// Quantize a MIDI note to the nearest note in the given scale bitmask
+uint8_t quantizeNoteToScale(uint8_t note, uint16_t scaleMask);
 
 // Fill a SynthPattern from a legacy AcidBanger Pattern (notes, accent, glide bitfields)
 void sequencer_load_synth_pattern(SynthPattern* dst, const uint8_t* notes, uint16_t accentBits, uint16_t glideBits);

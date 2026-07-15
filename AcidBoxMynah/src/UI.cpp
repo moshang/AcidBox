@@ -87,18 +87,29 @@ DrumEditMode currentDrumEditMode = DrumCutoffEdit;
 
 void setEditType(EditType voice)
 {
+    // Lock the pot whenever the edit type changes
+    // This prevents the parameter value from jumping when the pot
+    // position doesn't match the new mode's current parameter value.
+    potLock();
+
     currentEditType = voice;
     refreshOLED = true;
 }
 
 void setSynthEditMode(SynthEditMode mode )
 {
+    // Lock the pot whenever the synth edit mode changes
+    potLock();
+
     currentEditMode = mode;
     refreshOLED = true;
 }
 
 void setDrumEditMode(DrumEditMode mode)
 {
+    // Lock the pot whenever the drum edit mode changes
+    potLock();
+
     currentDrumEditMode = mode;
     refreshOLED = true;
 }

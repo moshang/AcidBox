@@ -124,6 +124,7 @@ static bool isDoubleClick(uint8_t buttonNum) {
 
 // ---------- FORWARD DECLARATIONS ----------
 static bool handleStandaloneDrumSteps();
+static bool handleStandaloneSynthSteps();
 static bool handleF1Combos();
 static bool handleF4DrumLaneCombos();
 static void handleFunctionButtons();
@@ -143,6 +144,12 @@ void processButtons()
 		return;
 	}
 
+	// Standalone step press in synths mode: toggle step active/inactive
+	if (handleStandaloneSynthSteps())
+	{
+		return;
+	}
+
 	// Standalone step press in drums mode: toggle step active/inactive
 	if (handleStandaloneDrumSteps())
 	{
@@ -158,7 +165,78 @@ void processButtons()
 	handleFunctionButtons();
 }
 
-// ==================== STANDALONE STEP BUTTON HANDLER ====================
+// Track the currently held step for synth editing (-1 = none)
+static int8_t heldSynthStep = -1;
+
+// ==================== STANDALONE SYNTH STEP HANDLER ====================
+// Handles STEP_1..STEP_16 pressed alone (no function button held) in synth edit modes (Syn1 or Syn2).
+// On press: sets heldSynthStep so the pot can edit pitch.
+// On release: toggles the step on/off ONLY if the pot was NOT adjusted during the hold.
+// Must be called before standalone drum step handler and after F1/F4 combo handlers
+// have consumed their combo events.
+static bool handleStandaloneSynthSteps()
+{
+	// Only in synth edit types + EDIT mode
+	if (currentMode != MODE_EDIT || (currentEditType != Syn1 && currentEditType != Syn2))
+	{
+		heldSynthStep = -1;
+		return false;
+	}
+
+	// Skip if any function button (F1-F8) is held — combos take priority
+	if (isButtonPressed(BTN_F1) || isButtonPressed(BTN_F2) ||
+		isButtonPressed(BTN_F3) || isButtonPressed(BTN_F4) ||
+		isButtonPressed(BTN_F5) || isButtonPressed(BTN_F6) ||
+		isButtonPressed(BTN_F7) || isButtonPressed(BTN_F8))
+	{
+		heldSynthStep = -1;
+		return false;
+	}
+
+	// Check for a step button just pressed — track it for pot editing
+	for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+	{
+		if (isButtonJustPressed(i))
+		{
+			uint8_t step = i - BTN_STEP_1; // 0-15
+			heldSynthStep = step;
+			stepPotAdjusted = false; // reset pot adjustment flag
+			refreshOLED = true;
+			ledsDirty = true;
+			return true;
+		}
+	}
+
+	// Check for a step button just released — toggle only if pot wasn't adjusted
+	for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+	{
+		if (isButtonJustReleased(i))
+		{
+			uint8_t step = i - BTN_STEP_1; // 0-15
+			if (!stepPotAdjusted)
+			{
+				// Pot was not adjusted — toggle step on/off
+				sequencer_toggle_synth_step(step, currentEditType);
+			}
+			else
+			{
+				// Pot was adjusted during the step hold — lock the pot
+				// so it doesn't jump to the current parameter value
+				// now that the step edit context is gone.
+				potLock();
+			}
+			heldSynthStep = -1;
+			stepPotAdjusted = false;
+			refreshOLED = true;
+			ledsDirty = true;
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// ==================== STANDALONE DRUM STEP HANDLER ====================
 // Handles STEP_1..STEP_16 pressed alone (no function button held) in drums mode.
 // Toggles the step on/off for the current drum lane.
 // Must be called before F8 release handler and after F1/F4 combo handlers

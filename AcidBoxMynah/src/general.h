@@ -56,6 +56,7 @@ void midi_toggle_play();
 void printButtonStates();
 void updatePot();
 void handlePot(uint16_t potVal);
+void potLock();
 void updateLEDS();
 void uiCoreTask(void* parameter);
 
@@ -65,6 +66,7 @@ extern NeoPixelBusLg<NeoGrbFeature, Neo800KbpsMethod> strip;
 extern volatile uint32_t buttonStates;
 extern volatile uint32_t lastButtonStates;
 extern bool anyStepButtonHeld;
+extern bool stepPotAdjusted;  // true if pot was adjusted while a step button was held
 extern bool sdCardAvailable;
 
 // UI
