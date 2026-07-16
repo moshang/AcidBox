@@ -5,6 +5,7 @@
 #include "general.h"
 #include "UI.h"
 #include "sequencer.h"
+#include "SCALES.h"
 
 // OLED display (128x64, hardware I2C) — same SSD1306 as MYNAH/RGB
 // HW_I2C constructor only takes rotation + reset pin. I2C pins are set via Wire.begin().
@@ -40,6 +41,42 @@ void updateOLED()
         return;
 
     u8g2.clearBuffer();
+
+    // ---- UI_SCALE mode: show SCALE on line 1, scale name on line 2 ----
+    if (currentUiMode == UI_SCALE)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("SCALE");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        u8g2.print(scaleName);
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
+    // ---- UI_ROOT mode: show ROOT on line 1, root note on line 2 ----
+    if (currentUiMode == UI_ROOT)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("ROOT");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        char rootBuf[8];
+        getRootNoteName(rootBuf, sizeof(rootBuf));
+        u8g2.print(rootBuf);
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
+    // ---- Normal mode: original display ----
     u8g2.setFont(u8g2_font_helvB14_tf);
     u8g2.setCursor(0, 25);
     u8g2.print(editTypeNames[currentEditType]);

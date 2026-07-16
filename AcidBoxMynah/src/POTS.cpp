@@ -3,6 +3,8 @@
 #include "general.h"
 #include "midi_handler.h"
 #include "sequencer.h"
+#include "SCALES.h"
+#include "UI.h"
 
 // Potentiometer state variables
 static uint8_t potAvgIndex = 0;
@@ -77,6 +79,37 @@ void updatePot()
 // ---------- HANDLE POT VALUE ----------
 void handlePot(uint16_t potVal)
 {
+	// ---- SCALE mode: pot selects the scale ----
+	if (currentUiMode == UI_SCALE)
+	{
+		// Map 0-4095 to 0..NUM_SCALES
+		uint8_t newScale = (uint8_t)((float)potVal / 4095.0f * (float)NUM_SCALES + 0.5f);
+		if (newScale > NUM_SCALES) newScale = NUM_SCALES;
+		if (newScale != scaleIndex)
+		{
+			setScale(newScale);
+			syncSequencerScale();
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
+	// ---- ROOT mode: pot selects the root note (C0..B7 = MIDI 12..107) ----
+	if (currentUiMode == UI_ROOT)
+	{
+		uint8_t newRoot = 12 + (uint8_t)((float)potVal / 4095.0f * 95.0f + 0.5f); // 12..107
+		if (newRoot > 107) newRoot = 107;
+		if (newRoot != rootNote)
+		{
+			rootNote = newRoot;
+			syncSequencerScale();
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
 	// Check if we're in EDIT mode with Syn1 or Syn2 and a step button is held
 	if (currentMode == MODE_EDIT && (currentEditType == Syn1 || currentEditType == Syn2))
 	{

@@ -57,6 +57,15 @@ extern const char* drumLaneNames[16];
 extern uint16_t currentDrumLane;      // bitmask for the current drum lane (e.g. 1<<0 = BD)
 extern uint8_t currentDrumLaneIndex;  // 0-15 index into drumLaneNames
 
+// ---- UI MODE ----
+// SUB-mode for scale/root editing: entered via F8+Step combos
+enum UiMode {
+  UI_NORMAL,  // default: edit types work as usual
+  UI_SCALE,   // F8+Step9: pot selects the scale
+  UI_ROOT     // F8+Step10: pot selects the root note
+};
+extern UiMode currentUiMode;
+
 void setEditType(EditType editType);
 void setSynthEditMode(SynthEditMode mode);
 void setDrumEditMode(DrumEditMode mode);

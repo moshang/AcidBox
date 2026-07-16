@@ -84,6 +84,7 @@ const uint8_t midiChn[4]
 EditType currentEditType = Syn1;
 SynthEditMode currentEditMode = WaveEdit;
 DrumEditMode currentDrumEditMode = DrumCutoffEdit;
+UiMode currentUiMode = UI_NORMAL;
 
 void setEditType(EditType voice)
 {

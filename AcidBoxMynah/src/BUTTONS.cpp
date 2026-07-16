@@ -2,6 +2,8 @@
 #include "config.h"
 #include "general.h"
 #include "sequencer.h"
+#include "SCALES.h"
+#include "UI.h"
 
 // ---------- INITIALIZE SHIFT REGISTER ----------
 void initShiftRegister()
@@ -122,11 +124,47 @@ static bool isDoubleClick(uint8_t buttonNum) {
     return (elapsed < DOUBLE_CLICK_MS);
 }
 
+// ---------- NUDGE FLAGS ----------
+// These flags suppress the normal edit-type switch (and sub-mode exit) when
+// F2/F3 are released after being used in an F1+F2 / F1+F3 nudge combo.
+static bool suppressF2Release = false;
+static bool suppressF3Release = false;
+
+// ---------- NUDGE FUNCTION ----------
+// Nudges the currently active parameter (scale index or root note) by ±1.
+// Called from the F1 combo handler when F1+F2 (direction=-1) or F1+F3 (direction=1) is detected.
+static void nudgeParam(int8_t direction)
+{
+    if (currentUiMode == UI_SCALE)
+    {
+        // Nudge scale index
+        int newScale = (int)scaleIndex + direction;
+        if (newScale < 0) newScale = NUM_SCALES;
+        if (newScale > NUM_SCALES) newScale = 0;
+        setScale((uint8_t)newScale);
+        syncSequencerScale();
+        refreshOLED = true;
+        ledsDirty = true;
+    }
+    else if (currentUiMode == UI_ROOT)
+    {
+        // Nudge root note
+        int newRoot = (int)rootNote + direction;
+        if (newRoot < 0) newRoot = 127;
+        if (newRoot > 127) newRoot = 0;
+        rootNote = (uint8_t)newRoot;
+        syncSequencerScale();
+        refreshOLED = true;
+        ledsDirty = true;
+    }
+}
+
 // ---------- FORWARD DECLARATIONS ----------
 static bool handleStandaloneDrumSteps();
 static bool handleStandaloneSynthSteps();
 static bool handleF1Combos();
 static bool handleF4DrumLaneCombos();
+static bool handleF8ScaleRootCombos();
 static void handleFunctionButtons();
 
 // ---------- PROCESS BUTTON EVENTS ----------
@@ -154,6 +192,12 @@ void processButtons()
 	if (handleStandaloneDrumSteps())
 	{
 		return;
+	}
+
+	// F8+Step combos for SCALE/ROOT mode — must come before F8 release handler
+	if (handleF8ScaleRootCombos())
+	{
+		return; // already handled (includes suppressing F8 release when F8 active)
 	}
 
 	// F8 release: toggle sequencer start/stop
@@ -288,14 +332,39 @@ static bool handleStandaloneDrumSteps()
 }
 
 // ==================== F1 COMBO HANDLER ====================
-// Handles F1+STEP (set synth edit mode) and F1+F8 (JUKEBOX/EDIT toggle).
+// Handles F1+STEP (set synth edit mode), F1+F8 (JUKEBOX/EDIT toggle),
+// and F1+F2/F1+F3 (parameter nudge in SCALE/ROOT mode).
 // Returns true if the event was consumed (which suppresses the subsequent
 // F8 release handler for F1+F8 combos).
 static bool handleF1Combos()
 {
 	// F1 not held: nothing to do
 	if (!isButtonPressed(BTN_F1))
+	{
+		// Clear nudge suppression flags if F1 is released — but only if F2/F3
+		// are also no longer held (to avoid leaking suppression beyond the combo)
+		if (!isButtonPressed(BTN_F2)) suppressF2Release = false;
+		if (!isButtonPressed(BTN_F3)) suppressF3Release = false;
 		return false;
+	}
+
+	// ---- F1+F2: Nudge parameter down ----
+	if (isButtonJustPressed(BTN_F2))
+	{
+		nudgeParam(-1);
+		suppressF2Release = true;  // prevent F2 release from switching edit type
+		ledsDirty = true;
+		return false; // don't block other handlers — F2 release will be suppressed later
+	}
+
+	// ---- F1+F3: Nudge parameter up ----
+	if (isButtonJustPressed(BTN_F3))
+	{
+		nudgeParam(1);
+		suppressF3Release = true;  // prevent F3 release from switching edit type
+		ledsDirty = true;
+		return false; // don't block other handlers
+	}
 
 	// F1+STEP_1 through F1+STEP_5: set edit mode (synth or drum depending on edit type)
 	const uint8_t F1_STEP_COUNT = 16;
@@ -337,11 +406,17 @@ static bool handleF1Combos()
 // ==================== FUNCTION BUTTON HANDLER ====================
 // Handles F2/F3/F4 releases: switch to Syn1/Syn2/Drm edit type.
 // Double-click toggles mute for the corresponding voice.
+// Nudge suppression flags prevent edit-type switches when F2/F3 were used
+// in F1+F2 / F1+F3 nudge combos.
 static void handleFunctionButtons()
 {
 	if (isButtonJustReleased(BTN_F2))
 	{
-		if (isDoubleClick(BTN_F2))
+		if (suppressF2Release)
+		{
+			suppressF2Release = false; // consume the suppression
+		}
+		else if (isDoubleClick(BTN_F2))
 		{
 			muteSynth1 = !muteSynth1;
 			refreshOLED = true;
@@ -354,7 +429,11 @@ static void handleFunctionButtons()
 
 	if (isButtonJustReleased(BTN_F3))
 	{
-		if (isDoubleClick(BTN_F3))
+		if (suppressF3Release)
+		{
+			suppressF3Release = false; // consume the suppression
+		}
+		else if (isDoubleClick(BTN_F3))
 		{
 			muteSynth2 = !muteSynth2;
 			refreshOLED = true;
@@ -402,6 +481,123 @@ static bool handleF4DrumLaneCombos()
 			setDrumLane(laneIndex);
 			return true;
 		}
+	}
+
+	return false;
+}
+
+// ==================== F8 + STEP 9/10 (SCALE / ROOT mode) ====================
+// F8+Step9 (BTN_STEP_9)  enters UI_SCALE mode — pot selects the scale.
+// F8+Step10 (BTN_STEP_10) enters UI_ROOT mode — pot selects the root note.
+//
+// Once entered, SCALE/ROOT mode persists until the user explicitly selects
+// another mode via F1+Step, F2, F3, F4, or F1+F8 — the F8 release is suppressed
+// so the sequencer does NOT start/stop.
+//
+// While in SCALE/ROOT mode, pressing F8+Step9/10 again switches between the
+// two sub-modes.
+//
+// F1+F2 / F1+F3 nudge combos are handled in handleF1Combos and do NOT exit
+// the sub-mode — they just nudge the current parameter by ±1.
+static bool handleF8ScaleRootCombos()
+{
+	// If we're in SCALE or ROOT, stay in sub-mode (blocking normal handlers)
+	// until the user explicitly selects another mode.
+	if (currentUiMode != UI_NORMAL)
+	{
+		// --- Exit conditions: user explicitly selects another mode ---
+
+		// F1+Step (any step): user is selecting a synth/drum edit mode → exit
+		if (isButtonPressed(BTN_F1))
+		{
+			for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+			{
+				if (isButtonJustPressed(i))
+				{
+					currentUiMode = UI_NORMAL;
+					refreshOLED = true;
+					ledsDirty = true;
+					return false; // let processButtons continue to handleF1Combos
+				}
+			}
+		}
+
+		// F1+F8: toggle JUKEBOX/EDIT → exit
+		if (isButtonJustPressed(BTN_F8) && isButtonPressed(BTN_F1))
+		{
+			currentUiMode = UI_NORMAL;
+			refreshOLED = true;
+			ledsDirty = true;
+			return false; // let processButtons continue to handleF1Combos
+		}
+
+		// F2/F3/F4 release (single click): switch edit type → exit
+		// BUT: skip if the release is suppressed by a nudge combo
+		if (isButtonJustReleased(BTN_F2) && !suppressF2Release)
+		{
+			currentUiMode = UI_NORMAL;
+			refreshOLED = true;
+			ledsDirty = true;
+			return false; // let processButtons continue to handleFunctionButtons
+		}
+		if (isButtonJustReleased(BTN_F3) && !suppressF3Release)
+		{
+			currentUiMode = UI_NORMAL;
+			refreshOLED = true;
+			ledsDirty = true;
+			return false; // let processButtons continue to handleFunctionButtons
+		}
+		if (isButtonJustReleased(BTN_F4))
+		{
+			currentUiMode = UI_NORMAL;
+			refreshOLED = true;
+			ledsDirty = true;
+			return false; // let processButtons continue to handleFunctionButtons
+		}
+
+		// Allow switching between SCALE ↔ ROOT while F8 is held
+		if (isButtonPressed(BTN_F8))
+		{
+			if (isButtonJustPressed(BTN_STEP_9) && currentUiMode != UI_SCALE)
+			{
+				currentUiMode = UI_SCALE;
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
+			if (isButtonJustPressed(BTN_STEP_10) && currentUiMode != UI_ROOT)
+			{
+				currentUiMode = UI_ROOT;
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
+		}
+
+		// Block all other handlers while in sub-mode
+		return true;
+	}
+
+	// Only enter sub-modes when F8 is held
+	if (!isButtonPressed(BTN_F8))
+		return false;
+
+	// F8+Step9: enter SCALE mode
+	if (isButtonJustPressed(BTN_STEP_9))
+	{
+		currentUiMode = UI_SCALE;
+		refreshOLED = true;
+		ledsDirty = true;
+		return true; // suppresses F8 release toggle
+	}
+
+	// F8+Step10: enter ROOT mode
+	if (isButtonJustPressed(BTN_STEP_10))
+	{
+		currentUiMode = UI_ROOT;
+		refreshOLED = true;
+		ledsDirty = true;
+		return true; // suppresses F8 release toggle
 	}
 
 	return false;
