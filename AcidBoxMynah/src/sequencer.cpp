@@ -179,7 +179,7 @@ uint32_t sequencer_tick() {
   {
     SynthStep& s1 = globalSeq.synth1.steps[globalSeq.currentStep];
     if (s1.active && s1.note > 0) {
-      uint8_t vel = s1.accent ? 120 : 80;
+      uint8_t vel = s1.accent ? 120 : 79;
       if (lastNote1 != 0) {
         if (s1.slide) {
           // Fingered glide: note-on first, then note-off
@@ -214,7 +214,7 @@ uint32_t sequencer_tick() {
   {
     SynthStep& s2 = globalSeq.synth2.steps[globalSeq.currentStep];
     if (s2.active && s2.note > 0) {
-      uint8_t vel = s2.accent ? 120 : 80;
+      uint8_t vel = s2.accent ? 120 : 79;
       if (lastNote2 != 0) {
         if (s2.slide) {
           // Fingered glide: note-on first, then note-off
@@ -417,6 +417,7 @@ void sequencer_toggle_synth_step(uint8_t step, EditType type) {
   
   // Toggle: if active with a note -> deactivate (clear note too)
   // If inactive -> activate with default note
+  // In normal mode, always clear slide and accent flags
   if (s.active && s.note > 0) {
     // Always send note-off when toggling a step off
     midi_send_noteoff(midiChan, s.note);
@@ -425,15 +426,91 @@ void sequencer_toggle_synth_step(uint8_t step, EditType type) {
     if (type == Syn1 && lastNote1 == s.note) lastNote1 = 0;
     if (type == Syn2 && lastNote2 == s.note) lastNote2 = 0;
     s.active = false;
+    s.slide = false;
+    s.accent = false;
     s.note = 0;
   } else {
     // Activate with a default note (mid-range, quantized to current scale)
     s.active = true;
+    s.slide = false;
+    s.accent = false;
     s.note = quantizeNoteToScale(60, currentScale); // default to C4 quantized
-    // Trigger the note so we can hear it
-    uint8_t vel = s.accent ? 120 : 80;
-    midi_send_noteon(midiChan, s.note, vel);
-    handleNoteOn(midiChan, s.note, vel);
+
+    // Clear any previous MVA state to prevent accidental slide/legato.
+    // When adding a note while the sequencer is playing (or has previously
+    // played), the MVA stack may still contain old notes.  If we send a
+    // note-on without cleaning up, mva_note_on will stack the new note on
+    // top of the old one, causing mva1.n > 1 and thus slide=true in
+    // on_midi_noteON.  Using allNotesOff() first ensures n=1 and slide=false.
+    uint8_t vel = s.accent ? 120 : 79;
+
+    if (type == Syn1) {
+      Synth1.allNotesOff();
+      midi_send_noteon(midiChan, s.note, vel);
+      handleNoteOn(midiChan, s.note, vel);
+      lastNote1 = s.note;
+    } else {
+      Synth2.allNotesOff();
+      midi_send_noteon(midiChan, s.note, vel);
+      handleNoteOn(midiChan, s.note, vel);
+      lastNote2 = s.note;
+    }
+  }
+}
+
+// ============================================================
+// Synth step slide/accent editing
+// ============================================================
+void sequencer_toggle_synth_slide_or_accent(uint8_t step, EditType type, bool isSlide) {
+  if (step >= 16) return;
+  
+  SynthPattern* pattern;
+  if (type == Syn1) {
+    pattern = &globalSeq.synth1;
+  } else if (type == Syn2) {
+    pattern = &globalSeq.synth2;
+  } else {
+    return;
+  }
+  
+  SynthStep& s = pattern->steps[step];
+  
+  if (isSlide) {
+    // Slide mode
+    if (!s.active || s.note == 0) {
+      // Step is off: turn it on with slide flag
+      s.active = true;
+      s.slide = true;
+      if (s.note == 0) {
+        s.note = quantizeNoteToScale(60, currentScale);
+      }
+    } else if (!s.slide) {
+      // Step is on but not slide: set slide flag
+      s.slide = true;
+    } else {
+      // Step is already a slide step: toggle it off
+      s.active = false;
+      s.slide = false;
+      s.note = 0;
+    }
+  } else {
+    // Accent mode
+    if (!s.active || s.note == 0) {
+      // Step is off: turn it on with accent flag
+      s.active = true;
+      s.accent = true;
+      if (s.note == 0) {
+        s.note = quantizeNoteToScale(60, currentScale);
+      }
+    } else if (!s.accent) {
+      // Step is on but not accent: set accent flag
+      s.accent = true;
+    } else {
+      // Step is already an accent step: toggle it off
+      s.active = false;
+      s.accent = false;
+      s.note = 0;
+    }
   }
 }
 
@@ -461,7 +538,7 @@ void sequencer_set_synth_step_note(uint8_t step, uint8_t note, EditType type) {
   // Use allNotesOff() to clear the MVA stack entirely, preventing the
   // monophonic voice allocator from setting slide=true (which happens
   // when mva1.n > 1 after note-off + note-on).
-  uint8_t vel = s.accent ? 120 : 80;
+  uint8_t vel = s.accent ? 120 : 79;
   
   if (type == Syn1) {
     Synth1.allNotesOff();  // clears MVA stack, sets mva1.n = 0

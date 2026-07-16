@@ -487,7 +487,19 @@ void sequencerDisplayTick() {
         SynthStep& s = globalSeq.synth1.steps[step];
         if (s.active && s.note > 0) {
           active = true;
-          stepColor = RgbColor(0, 200, 220); // cyan
+          if (s.slide && s.accent) {
+            // Both slide and accent: bright yellow
+            stepColor = RgbColor(255, 255, 0);
+          } else if (s.slide) {
+            // Slide only: gold/yellow
+            stepColor = RgbColor(255, 200, 0);
+          } else if (s.accent) {
+            // Accent only: bright white
+            stepColor = RgbColor(255, 255, 255);
+          } else {
+            // Normal active step: cyan
+            stepColor = RgbColor(0, 200, 220);
+          }
         }
         break;
       }
@@ -495,7 +507,19 @@ void sequencerDisplayTick() {
         SynthStep& s = globalSeq.synth2.steps[step];
         if (s.active && s.note > 0) {
           active = true;
-          stepColor = RgbColor(220, 0, 200); // magenta
+          if (s.slide && s.accent) {
+            // Both slide and accent: bright yellow
+            stepColor = RgbColor(255, 255, 0);
+          } else if (s.slide) {
+            // Slide only: gold/yellow
+            stepColor = RgbColor(255, 200, 0);
+          } else if (s.accent) {
+            // Accent only: bright white
+            stepColor = RgbColor(255, 255, 255);
+          } else {
+            // Normal active step: magenta
+            stepColor = RgbColor(220, 0, 200);
+          }
         }
         break;
       }

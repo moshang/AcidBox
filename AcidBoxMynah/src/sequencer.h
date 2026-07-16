@@ -112,6 +112,11 @@ void sequencer_toggle_drum_step(uint8_t step, uint16_t laneMask);
 // Toggle a synth step on/off for Syn1 or Syn2
 void sequencer_toggle_synth_step(uint8_t step, EditType type);
 
+// Toggle slide or accent flag on a synth step for Syn1 or Syn2
+// In slide mode (isSlide=true): off→on+slide, on→slide, slide→off
+// In accent mode (isSlide=false): off→on+accent, on→accent, accent→off
+void sequencer_toggle_synth_slide_or_accent(uint8_t step, EditType type, bool isSlide);
+
 // Set the note for a synth step
 void sequencer_set_synth_step_note(uint8_t step, uint8_t note, EditType type);
 

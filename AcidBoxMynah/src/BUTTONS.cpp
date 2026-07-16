@@ -172,6 +172,9 @@ static int8_t heldSynthStep = -1;
 // Handles STEP_1..STEP_16 pressed alone (no function button held) in synth edit modes (Syn1 or Syn2).
 // On press: sets heldSynthStep so the pot can edit pitch.
 // On release: toggles the step on/off ONLY if the pot was NOT adjusted during the hold.
+//   - In normal edit modes (not SlideEdit/AccentEdit): toggles step active/inactive.
+//   - In SlideEdit mode: toggles slide flag (off→on+slide, on→slide, slide→off).
+//   - In AccentEdit mode: toggles accent flag (off→on+accent, on→accent, accent→off).
 // Must be called before standalone drum step handler and after F1/F4 combo handlers
 // have consumed their combo events.
 static bool handleStandaloneSynthSteps()
@@ -215,8 +218,22 @@ static bool handleStandaloneSynthSteps()
 			uint8_t step = i - BTN_STEP_1; // 0-15
 			if (!stepPotAdjusted)
 			{
-				// Pot was not adjusted — toggle step on/off
-				sequencer_toggle_synth_step(step, currentEditType);
+				// Pot was not adjusted — toggle based on current edit mode
+				if (currentEditMode == SlideEdit)
+				{
+					// Slide mode: toggle slide flag on the step
+					sequencer_toggle_synth_slide_or_accent(step, currentEditType, true);
+				}
+				else if (currentEditMode == AccentEdit)
+				{
+					// Accent mode: toggle accent flag on the step
+					sequencer_toggle_synth_slide_or_accent(step, currentEditType, false);
+				}
+				else
+				{
+					// Normal mode: toggle step on/off
+					sequencer_toggle_synth_step(step, currentEditType);
+				}
 			}
 			else
 			{
