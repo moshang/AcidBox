@@ -57,6 +57,7 @@ void printButtonStates();
 void updatePot();
 void handlePot(uint16_t potVal);
 void potLock();
+bool isPotLocked();  // true when pot is locked (automation interpolation should be used)
 void updateLEDS();
 void uiCoreTask(void* parameter);
 

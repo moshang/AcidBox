@@ -29,6 +29,21 @@ static uint8_t lastNote1 = 0;
 static uint8_t lastNote2 = 0;
 
 // ============================================================
+// Cutoff interpolation state (EDIT mode only)
+// ============================================================
+// "from" = previous step's cutoff value, "to" = current step's cutoff value
+// During the step, cutoff smoothly ramps from "from" to "to".
+static uint8_t cutoffFrom_1 = 0;
+static uint8_t cutoffTo_1 = 0;
+static bool   cutoffInterp_1 = false;
+static uint8_t cutoffFrom_2 = 0;
+static uint8_t cutoffTo_2 = 0;
+static bool   cutoffInterp_2 = false;
+static uint8_t cutoffFrom_d = 0;
+static uint8_t cutoffTo_d = 0;
+static bool   cutoffInterp_d = false;
+
+// ============================================================
 // Drum voice MIDI note mappings (matching AcidBanger.cpp)
 // ============================================================
 #define KICK_NOTE  0  // BD
@@ -159,8 +174,17 @@ void sequencer_toggle_play() {
 
 // ============================================================
 // Automation recall — called at each step to apply parameter automation
+// Non-cutoff parameters are applied immediately.
+// Cutoff (lane 0 for synths and drums) sets up interpolation state
+// so the value glides smoothly across the step duration.
 // ============================================================
 void sequencer_apply_automation() {
+  // Always apply automation at step boundaries regardless of pot state.
+  // The pot's direct handleCC may temporarily override a parameter, but
+  // the next step boundary will restore the automation value.
+  // Cutoff interpolation (continuous ramping) is gated separately in
+  // sequencer_interpolate_cutoff() to avoid fighting with the pot.
+
   uint8_t step = globalSeq.currentStep;
   uint8_t ccVal;
 
@@ -168,7 +192,18 @@ void sequencer_apply_automation() {
   for (uint8_t lane = 0; lane < 16; lane++) {
     if (globalSeq.autoSynth1.laneEnabled & (1 << lane)) {
       ccVal = globalSeq.autoSynth1.lanes[lane][step];
-      handleCC(SYNTH1_MIDI_CHAN, synthEditCC[lane], ccVal);
+      if (lane == 0) {
+        // Cutoff lane: set up interpolation from previous value to this step's value
+        cutoffFrom_1 = cutoffTo_1;  // previous step's target becomes our starting point
+        cutoffTo_1 = ccVal;
+        cutoffInterp_1 = true;
+        // When the pot is unlocked, interpolation won't run, so send cutoff directly.
+        if (!isPotLocked()) {
+          handleCC(SYNTH1_MIDI_CHAN, synthEditCC[0], ccVal);
+        }
+      } else {
+        handleCC(SYNTH1_MIDI_CHAN, synthEditCC[lane], ccVal);
+      }
     }
   }
 
@@ -176,7 +211,16 @@ void sequencer_apply_automation() {
   for (uint8_t lane = 0; lane < 16; lane++) {
     if (globalSeq.autoSynth2.laneEnabled & (1 << lane)) {
       ccVal = globalSeq.autoSynth2.lanes[lane][step];
-      handleCC(SYNTH2_MIDI_CHAN, synthEditCC[lane], ccVal);
+      if (lane == 0) {
+        cutoffFrom_2 = cutoffTo_2;
+        cutoffTo_2 = ccVal;
+        cutoffInterp_2 = true;
+        if (!isPotLocked()) {
+          handleCC(SYNTH2_MIDI_CHAN, synthEditCC[0], ccVal);
+        }
+      } else {
+        handleCC(SYNTH2_MIDI_CHAN, synthEditCC[lane], ccVal);
+      }
     }
   }
 
@@ -184,7 +228,17 @@ void sequencer_apply_automation() {
   for (uint8_t lane = 0; lane < 8; lane++) {
     if (globalSeq.autoDrum.laneEnabled & (1 << lane)) {
       ccVal = globalSeq.autoDrum.lanes[lane][step];
-      handleCC(DRUM_MIDI_CHAN, drumEditCC[lane], ccVal);
+      if (lane == 0) {
+        // Drum cutoff lane
+        cutoffFrom_d = cutoffTo_d;
+        cutoffTo_d = ccVal;
+        cutoffInterp_d = true;
+        if (!isPotLocked()) {
+          handleCC(DRUM_MIDI_CHAN, drumEditCC[0], ccVal);
+        }
+      } else {
+        handleCC(DRUM_MIDI_CHAN, drumEditCC[lane], ccVal);
+      }
     }
   }
 }
@@ -348,11 +402,60 @@ uint32_t sequencer_tick() {
 }
 
 // ============================================================
+// Cutoff interpolation — called from sequencer_service() on every poll
+// Smoothly ramps cutoff from the previous step's value to the current step's value.
+// ============================================================
+static void sequencer_interpolate_cutoff() {
+  // Only interpolate in EDIT mode
+  if (currentMode != MODE_EDIT) return;
+
+  // When the pot is unlocked, the user is actively turning it —
+  // skip interpolation and let the pot's direct handleCC take precedence.
+  if (!isPotLocked()) return;
+
+  uint32_t elapsed = micros() - lastTickUs;
+  if (nextTickIntervalUs == 0) return;
+
+  // Calculate progress through the current step (0.0 to 1.0)
+  float t = (float)elapsed / (float)nextTickIntervalUs;
+  if (t > 1.0f) t = 1.0f;
+  if (t < 0.0f) t = 0.0f;
+
+  // --- Synth 1 cutoff ---
+  if (cutoffInterp_1) {
+    int16_t diff = (int16_t)cutoffTo_1 - (int16_t)cutoffFrom_1;
+    uint8_t val = cutoffFrom_1 + (uint8_t)((float)diff * t);
+    handleCC(SYNTH1_MIDI_CHAN, synthEditCC[0], val);
+    if (t >= 1.0f) cutoffInterp_1 = false;
+  }
+
+  // --- Synth 2 cutoff ---
+  if (cutoffInterp_2) {
+    int16_t diff = (int16_t)cutoffTo_2 - (int16_t)cutoffFrom_2;
+    uint8_t val = cutoffFrom_2 + (uint8_t)((float)diff * t);
+    handleCC(SYNTH2_MIDI_CHAN, synthEditCC[0], val);
+    if (t >= 1.0f) cutoffInterp_2 = false;
+  }
+
+  // --- Drum cutoff ---
+  if (cutoffInterp_d) {
+    int16_t diff = (int16_t)cutoffTo_d - (int16_t)cutoffFrom_d;
+    uint8_t val = cutoffFrom_d + (uint8_t)((float)diff * t);
+    handleCC(DRUM_MIDI_CHAN, drumEditCC[0], val);
+    if (t >= 1.0f) cutoffInterp_d = false;
+  }
+}
+
+// ============================================================
 // Sequencer service function — call from regular_checks() on Core 1
 // Checks micros() and fires sequencer_tick() when the interval expires.
+// Also handles cutoff interpolation on every poll.
 // ============================================================
 void sequencer_service() {
   if (!globalSeq.isPlaying) return;
+
+  // Run cutoff interpolation on every poll (smooth ramping)
+  sequencer_interpolate_cutoff();
 
   uint32_t now = micros();
   uint32_t elapsed = now - lastTickUs;

@@ -14,6 +14,9 @@ static uint8_t potUnlocked = 0;
 
 // Pot locking (for mode-change protection)
 static bool potLocked = false;           // true when pot is locked after a mode change
+bool isPotLocked() {
+    return potLocked;
+}
 static uint16_t potLockPos = 0;          // pot position at lock time
 
 // Step pitch edit state
