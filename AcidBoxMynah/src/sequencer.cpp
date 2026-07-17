@@ -158,6 +158,38 @@ void sequencer_toggle_play() {
 }
 
 // ============================================================
+// Automation recall — called at each step to apply parameter automation
+// ============================================================
+void sequencer_apply_automation() {
+  uint8_t step = globalSeq.currentStep;
+  uint8_t ccVal;
+
+  // --- Synth 1 automation ---
+  for (uint8_t lane = 0; lane < 16; lane++) {
+    if (globalSeq.autoSynth1.laneEnabled & (1 << lane)) {
+      ccVal = globalSeq.autoSynth1.lanes[lane][step];
+      handleCC(SYNTH1_MIDI_CHAN, synthEditCC[lane], ccVal);
+    }
+  }
+
+  // --- Synth 2 automation ---
+  for (uint8_t lane = 0; lane < 16; lane++) {
+    if (globalSeq.autoSynth2.laneEnabled & (1 << lane)) {
+      ccVal = globalSeq.autoSynth2.lanes[lane][step];
+      handleCC(SYNTH2_MIDI_CHAN, synthEditCC[lane], ccVal);
+    }
+  }
+
+  // --- Drum automation ---
+  for (uint8_t lane = 0; lane < 8; lane++) {
+    if (globalSeq.autoDrum.laneEnabled & (1 << lane)) {
+      ccVal = globalSeq.autoDrum.lanes[lane][step];
+      handleCC(DRUM_MIDI_CHAN, drumEditCC[lane], ccVal);
+    }
+  }
+}
+
+// ============================================================
 // The main sequencer tick — called at each 16th-note boundary
 // Sends MIDI note-on/off for the current step's events.
 // ============================================================
@@ -171,6 +203,9 @@ uint32_t sequencer_tick() {
     nextStep = 0;
   }
   globalSeq.currentStep = nextStep;
+
+  // --- Apply automation for THIS step (before playing notes) ---
+  sequencer_apply_automation();
 
   // --- Synth 1 ---
   // Match jukebox instr_noteon_raw behaviour:
@@ -382,6 +417,64 @@ void sequencer_load_drum_pattern(DrumPattern* dst,
     if (perc[i]  > 0)  mask |= (1 << 10);
     if (crash[i] > 0)  mask |= (1 << 8);
     dst->steps[i] = mask;
+  }
+}
+
+// ============================================================
+// Automation recording
+// ============================================================
+
+// Write the current parameter value into the automation lane at the current step.
+// Used when F1+pot is detected (per-step recording).
+void sequencer_write_automation_step(uint8_t lane, uint8_t value) {
+  if (globalSeq.currentStep >= 16) return;
+
+  switch (currentEditType) {
+    case Syn1:
+      globalSeq.autoSynth1.lanes[lane][globalSeq.currentStep] = value;
+      globalSeq.autoSynth1.laneEnabled |= (1 << lane);
+      break;
+    case Syn2:
+      globalSeq.autoSynth2.lanes[lane][globalSeq.currentStep] = value;
+      globalSeq.autoSynth2.laneEnabled |= (1 << lane);
+      break;
+    case Drm:
+      if (lane < 8) {
+        globalSeq.autoDrum.lanes[lane][globalSeq.currentStep] = value;
+        globalSeq.autoDrum.laneEnabled |= (1 << lane);
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+// Write the current parameter value to ALL 16 steps of the automation lane.
+// Used when pot is turned without F1 held (global fill).
+void sequencer_write_automation_all_steps(uint8_t lane, uint8_t value) {
+  switch (currentEditType) {
+    case Syn1:
+      for (uint8_t i = 0; i < 16; i++) {
+        globalSeq.autoSynth1.lanes[lane][i] = value;
+      }
+      globalSeq.autoSynth1.laneEnabled |= (1 << lane);
+      break;
+    case Syn2:
+      for (uint8_t i = 0; i < 16; i++) {
+        globalSeq.autoSynth2.lanes[lane][i] = value;
+      }
+      globalSeq.autoSynth2.laneEnabled |= (1 << lane);
+      break;
+    case Drm:
+      if (lane < 8) {
+        for (uint8_t i = 0; i < 16; i++) {
+          globalSeq.autoDrum.lanes[lane][i] = value;
+        }
+        globalSeq.autoDrum.laneEnabled |= (1 << lane);
+      }
+      break;
+    default:
+      break;
   }
 }
 

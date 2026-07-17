@@ -50,11 +50,31 @@ enum PlaybackMode {
   MODE_EDIT    = 1   // User edits patterns; playback loops globalSeq
 };
 
+// Automation lane for synth parameters: 16 parameters × 16 steps
+// Each value is 0-127, matching the MIDI CC range used by the synth engine.
+// Lane index order matches SynthEditMode enum (CutoffEdit=0, ResoEdit=1, ... TuningEdit=15).
+struct SynthAutomation {
+  uint8_t  lanes[16][16];  // [param][step] — 0-127 per cell
+  uint16_t laneEnabled;    // bitmask: bit N = 1 if lane N has active automation
+};
+
+// Automation lane for drum parameters: 8 parameters × 16 steps
+// Each value is 0-127, matching the MIDI CC range used by the sampler engine.
+// Lane index order matches DrumEditMode enum (DrumCutoffEdit=0, ... DrumVolumeEdit=7).
+struct DrumAutomation {
+  uint8_t lanes[8][16];   // [param][step] — 0-127 per cell
+  uint8_t laneEnabled;    // bitmask: bit N = 1 if lane N has active automation
+};
+
 // Top-level sequencer state
 struct SequencerState {
   SynthPattern synth1;
   SynthPattern synth2;
   DrumPattern  drum;
+
+  SynthAutomation autoSynth1;   // automation lanes for synth 1
+  SynthAutomation autoSynth2;   // automation lanes for synth 2
+  DrumAutomation  autoDrum;     // automation lanes for drums
 
   float        bpm;          // beats per minute (default 120.0)
   float        swing;        // swing percentage (50.0 = straight, 50..75)
@@ -130,5 +150,20 @@ void sequencer_load_synth_pattern(SynthPattern* dst, const uint8_t* notes, uint1
 void sequencer_load_drum_pattern(DrumPattern* dst, const uint8_t* kick, const uint8_t* snare,
                                   const uint8_t* ch, const uint8_t* oh,
                                   const uint8_t* perc, const uint8_t* crash);
+
+// ============================================================
+// Automation API
+// ============================================================
+
+// Apply automation for the current step — called from sequencer_tick()
+void sequencer_apply_automation();
+
+// Write a parameter value into the automation lane at the current step.
+// Also enables the lane. Used when F1+pot is turned.
+void sequencer_write_automation_step(uint8_t lane, uint8_t value);
+
+// Write a parameter value to all 16 steps of the automation lane.
+// Also enables the lane. Used when pot is turned without F1 held.
+void sequencer_write_automation_all_steps(uint8_t lane, uint8_t value);
 
 #endif // SEQUENCER_H

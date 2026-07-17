@@ -338,6 +338,17 @@ static bool handleStandaloneDrumSteps()
 // F8 release handler for F1+F8 combos).
 static bool handleF1Combos()
 {
+	// F1 just released: lock the pot to prevent accidental overwrite of automation
+	if (isButtonJustReleased(BTN_F1))
+	{
+		// In EDIT mode, lock the pot so the next turn doesn't immediately overwrite
+		// the automation we just recorded with F1 held.
+		if (currentMode == MODE_EDIT)
+		{
+			potLock();
+		}
+	}
+
 	// F1 not held: nothing to do
 	if (!isButtonPressed(BTN_F1))
 	{

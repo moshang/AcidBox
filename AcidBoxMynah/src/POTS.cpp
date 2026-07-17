@@ -163,14 +163,17 @@ void handlePot(uint16_t potVal)
 
 	// Normal param CC handling (when not editing step pitch)
 	uint8_t midiCC = 0;
+	uint8_t lane = 0;
 	switch (currentEditType)
 	{
 	case Syn1:
 	case Syn2:
 		midiCC = synthEditCC[currentEditMode];
+		lane = (uint8_t)currentEditMode;
 		break;
 	case Drm:
 		midiCC = drumEditCC[currentDrumEditMode];
+		lane = (uint8_t)currentDrumEditMode;
 		break;
 	default:
 		return; // No action for other modes
@@ -181,5 +184,23 @@ void handlePot(uint16_t potVal)
 	if (normalizedVal > 1.0f)
 		normalizedVal = 1.0f;
 
-	handleCC(midiChn[currentEditType], midiCC, (uint8_t)(normalizedVal * 127.0f));
+	uint8_t ccVal = (uint8_t)(normalizedVal * 127.0f);
+
+	// Send the CC to the synth/drum engine
+	handleCC(midiChn[currentEditType], midiCC, ccVal);
+
+	// Write to automation:
+	//   - If F1 is held: record at the current step only (per-step recording)
+	//   - If F1 is NOT held: fill all 16 steps (global parameter set)
+	if (currentMode == MODE_EDIT)
+	{
+		if (isButtonPressed(BTN_F1))
+		{
+			sequencer_write_automation_step(lane, ccVal);
+		}
+		else
+		{
+			sequencer_write_automation_all_steps(lane, ccVal);
+		}
+	}
 }
