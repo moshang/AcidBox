@@ -113,6 +113,52 @@ void handlePot(uint16_t potVal)
 		return;
 	}
 
+	// ---- BPM mode: pot sets BPM (20..300) ----
+	if (currentUiMode == UI_BPM)
+	{
+		float newBpm = 20.0f + (float)potVal / 4095.0f * 280.0f; // 20..300
+		if (newBpm > 300.0f) newBpm = 300.0f;
+		if (newBpm < 20.0f) newBpm = 20.0f;
+		if (fabs(newBpm - globalSeq.bpm) > 0.5f)
+		{
+			globalSeq.bpm = newBpm;
+			bpm = newBpm;
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
+	// ---- SWING mode: pot sets swing (50..75) ----
+	if (currentUiMode == UI_SWING)
+	{
+		float newSwing = 50.0f + (float)potVal / 4095.0f * 25.0f; // 50..75
+		if (newSwing > 75.0f) newSwing = 75.0f;
+		if (newSwing < 50.0f) newSwing = 50.0f;
+		if (fabs(newSwing - globalSeq.swing) > 0.5f)
+		{
+			globalSeq.swing = newSwing;
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
+	// ---- MASTERVOL mode: pot sets master volume (0..100%) ----
+	if (currentUiMode == UI_MASTERVOL)
+	{
+		float newVol = (float)potVal / 4095.0f; // 0.0..1.0
+		if (newVol > 1.0f) newVol = 1.0f;
+		if (newVol < 0.0f) newVol = 0.0f;
+		if (fabs(newVol - masterVolume) > 0.005f)
+		{
+			masterVolume = newVol;
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
 	// Check if we're in EDIT mode with Syn1 or Syn2 and a step button is held
 	if (currentMode == MODE_EDIT && (currentEditType == Syn1 || currentEditType == Syn2))
 	{

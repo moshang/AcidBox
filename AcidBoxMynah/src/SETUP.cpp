@@ -44,6 +44,13 @@ extern void IRAM_ATTR onTimer2();
  */
 void setup(void) {
 
+  // ---------- POWER RAIL STABILIZATION DELAY ----------
+  // Gives the battery boost converter time to stabilize its output
+  // before the ESP32 and peripherals begin drawing current.
+  // Prevents startup voltage sag / slow-rising power rail issues
+  // when powering from batteries via a boost converter.
+  delay(STARTUP_DELAY_MS);
+
   // ---------- BROWNOUT DETECTOR: disabled ----------
   // Prevents false brownout resets from transient current spikes
   WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);

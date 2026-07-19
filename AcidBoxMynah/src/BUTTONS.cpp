@@ -131,7 +131,7 @@ static bool suppressF2Release = false;
 static bool suppressF3Release = false;
 
 // ---------- NUDGE FUNCTION ----------
-// Nudges the currently active parameter (scale index or root note) by ±1.
+// Nudges the currently active parameter by ±1.
 // Called from the F1 combo handler when F1+F2 (direction=-1) or F1+F3 (direction=1) is detected.
 static void nudgeParam(int8_t direction)
 {
@@ -154,6 +154,37 @@ static void nudgeParam(int8_t direction)
         if (newRoot > 127) newRoot = 0;
         rootNote = (uint8_t)newRoot;
         syncSequencerScale();
+        refreshOLED = true;
+        ledsDirty = true;
+    }
+    else if (currentUiMode == UI_BPM)
+    {
+        // Nudge BPM by ±1
+        float newBpm = globalSeq.bpm + (float)direction;
+        if (newBpm < 20.0f) newBpm = 20.0f;
+        if (newBpm > 300.0f) newBpm = 300.0f;
+        globalSeq.bpm = newBpm;
+        bpm = newBpm;
+        refreshOLED = true;
+        ledsDirty = true;
+    }
+    else if (currentUiMode == UI_SWING)
+    {
+        // Nudge swing by ±1
+        float newSwing = globalSeq.swing + (float)direction;
+        if (newSwing < 50.0f) newSwing = 50.0f;
+        if (newSwing > 75.0f) newSwing = 75.0f;
+        globalSeq.swing = newSwing;
+        refreshOLED = true;
+        ledsDirty = true;
+    }
+    else if (currentUiMode == UI_MASTERVOL)
+    {
+        // Nudge master volume by ±0.05
+        float newVol = masterVolume + (float)direction * 0.05f;
+        if (newVol < 0.0f) newVol = 0.0f;
+        if (newVol > 1.0f) newVol = 1.0f;
+        masterVolume = newVol;
         refreshOLED = true;
         ledsDirty = true;
     }
@@ -497,22 +528,24 @@ static bool handleF4DrumLaneCombos()
 	return false;
 }
 
-// ==================== F8 + STEP 9/10 (SCALE / ROOT mode) ====================
-// F8+Step9 (BTN_STEP_9)  enters UI_SCALE mode — pot selects the scale.
+// ==================== F8 + STEP combos (SCALE / ROOT / BPM / SWING / MASTERVOL) ====================
+// F8+Step9  (BTN_STEP_9)  enters UI_SCALE mode — pot selects the scale.
 // F8+Step10 (BTN_STEP_10) enters UI_ROOT mode — pot selects the root note.
+// F8+Step8  (BTN_STEP_8)  enters UI_BPM mode — pot sets BPM.
+// F8+Step7  (BTN_STEP_7)  enters UI_SWING mode — pot sets swing.
+// F8+Step16 (BTN_STEP_16) enters UI_MASTERVOL mode — pot sets master volume.
 //
-// Once entered, SCALE/ROOT mode persists until the user explicitly selects
+// Once entered, sub-mode persists until the user explicitly selects
 // another mode via F1+Step, F2, F3, F4, or F1+F8 — the F8 release is suppressed
 // so the sequencer does NOT start/stop.
 //
-// While in SCALE/ROOT mode, pressing F8+Step9/10 again switches between the
-// two sub-modes.
+// While in a sub-mode, pressing F8+Step again switches between sub-modes.
 //
 // F1+F2 / F1+F3 nudge combos are handled in handleF1Combos and do NOT exit
 // the sub-mode — they just nudge the current parameter by ±1.
 static bool handleF8ScaleRootCombos()
 {
-	// If we're in SCALE or ROOT, stay in sub-mode (blocking normal handlers)
+	// If we're in a sub-mode, stay in sub-mode (blocking normal handlers)
 	// until the user explicitly selects another mode.
 	if (currentUiMode != UI_NORMAL)
 	{
@@ -566,7 +599,7 @@ static bool handleF8ScaleRootCombos()
 			return false; // let processButtons continue to handleFunctionButtons
 		}
 
-		// Allow switching between SCALE ↔ ROOT while F8 is held
+		// Allow switching between sub-modes while F8 is held
 		if (isButtonPressed(BTN_F8))
 		{
 			if (isButtonJustPressed(BTN_STEP_9) && currentUiMode != UI_SCALE)
@@ -579,6 +612,27 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_10) && currentUiMode != UI_ROOT)
 			{
 				currentUiMode = UI_ROOT;
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
+			if (isButtonJustPressed(BTN_STEP_8) && currentUiMode != UI_BPM)
+			{
+				currentUiMode = UI_BPM;
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
+			if (isButtonJustPressed(BTN_STEP_7) && currentUiMode != UI_SWING)
+			{
+				currentUiMode = UI_SWING;
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
+			if (isButtonJustPressed(BTN_STEP_16) && currentUiMode != UI_MASTERVOL)
+			{
+				currentUiMode = UI_MASTERVOL;
 				refreshOLED = true;
 				ledsDirty = true;
 				return true;
@@ -606,6 +660,33 @@ static bool handleF8ScaleRootCombos()
 	if (isButtonJustPressed(BTN_STEP_10))
 	{
 		currentUiMode = UI_ROOT;
+		refreshOLED = true;
+		ledsDirty = true;
+		return true; // suppresses F8 release toggle
+	}
+
+	// F8+Step8: enter BPM mode
+	if (isButtonJustPressed(BTN_STEP_8))
+	{
+		currentUiMode = UI_BPM;
+		refreshOLED = true;
+		ledsDirty = true;
+		return true; // suppresses F8 release toggle
+	}
+
+	// F8+Step7: enter SWING mode
+	if (isButtonJustPressed(BTN_STEP_7))
+	{
+		currentUiMode = UI_SWING;
+		refreshOLED = true;
+		ledsDirty = true;
+		return true; // suppresses F8 release toggle
+	}
+
+	// F8+Step16: enter MASTERVOL mode
+	if (isButtonJustPressed(BTN_STEP_16))
+	{
+		currentUiMode = UI_MASTERVOL;
 		refreshOLED = true;
 		ledsDirty = true;
 		return true; // suppresses F8 release toggle

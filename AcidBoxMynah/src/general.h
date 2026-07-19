@@ -85,6 +85,9 @@ extern bool muteSynth1;
 extern bool muteSynth2;
 extern bool muteDrums;
 
+// Master volume (0.0 - 1.0, set via F8+Step16)
+extern float masterVolume;
+
 // Shared instances and variables
 extern Sampler Drums;
 extern SynthVoice Synth1;

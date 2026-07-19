@@ -4,6 +4,7 @@
 #include "sampler.h"
 
 float bpm = 130.0f;
+float masterVolume = 1.0f;
 
 #include "fx_delay.h"
 #ifndef NO_PSRAM
@@ -108,8 +109,8 @@ void IRAM_ATTR mixer() { // sum buffers
 #endif
   //    mix_buf_l[current_out_buf][i] = fclamp(mix_buf_l[current_out_buf][i] , -1.0f, 1.0f); // clipper
   //    mix_buf_r[current_out_buf][i] = fclamp(mix_buf_r[current_out_buf][i] , -1.0f, 1.0f);
-     mix_buf_l[current_out_buf][i] = fast_shape( mix_buf_l[current_out_buf][i]); // soft limitter/saturator
-     mix_buf_r[current_out_buf][i] = fast_shape( mix_buf_r[current_out_buf][i]);
+     mix_buf_l[current_out_buf][i] = fast_shape( mix_buf_l[current_out_buf][i] * masterVolume); // soft limitter/saturator
+     mix_buf_r[current_out_buf][i] = fast_shape( mix_buf_r[current_out_buf][i] * masterVolume);
     }
 #ifdef DEBUG_MASTER_OUT
   meter *= 0.95f;

@@ -76,6 +76,60 @@ void updateOLED()
         return;
     }
 
+    // ---- UI_BPM mode: show BPM on line 1, value on line 2 ----
+    if (currentUiMode == UI_BPM)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("BPM");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%.0f", globalSeq.bpm);
+        u8g2.print(buf);
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
+    // ---- UI_SWING mode: show SWING on line 1, value on line 2 ----
+    if (currentUiMode == UI_SWING)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("SWING");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%.0f%%", globalSeq.swing);
+        u8g2.print(buf);
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
+    // ---- UI_MASTERVOL mode: show VOLUME on line 1, value on line 2 ----
+    if (currentUiMode == UI_MASTERVOL)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("VOLUME");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d%%", (int)(masterVolume * 100.0f));
+        u8g2.print(buf);
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
     // ---- Normal mode: original display ----
     u8g2.setFont(u8g2_font_helvB14_tf);
     u8g2.setCursor(0, 25);

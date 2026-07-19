@@ -4,6 +4,12 @@
 #define PROG_NAME       "ESP32 AcidBox"
 #define VERSION         "v.1.3.3"
 
+// Startup power-rail stabilization delay (milliseconds)
+// Gives the battery boost converter time to stabilize its output
+// before the ESP32 and peripherals begin drawing current.
+// Increase this value if experiencing boot failures on battery power.
+#define STARTUP_DELAY_MS 500
+
 #define BOARD_HAS_UART_CHIP
 
 #define JUKEBOX                 // real-time endless auto-compose acid tunes
