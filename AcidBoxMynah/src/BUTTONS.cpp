@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "general.h"
+#include "sampler.h"
 #include "sequencer.h"
 #include "SCALES.h"
 #include "UI.h"
@@ -178,6 +179,16 @@ static void nudgeParam(int8_t direction)
         refreshOLED = true;
         ledsDirty = true;
     }
+    else if (currentUiMode == UI_KITS)
+    {
+        // Nudge kit selection index
+        int newKit = Drums.GetKitIndex() + direction;
+        if (newKit < 0) newKit = Drums.GetKitCount() - 1;
+        if (newKit >= Drums.GetKitCount()) newKit = 0;
+        Drums.SetKitIndex(newKit);
+        refreshOLED = true;
+        ledsDirty = true;
+    }
     else if (currentUiMode == UI_MASTERVOL)
     {
         // Nudge master volume by ±0.05
@@ -195,12 +206,21 @@ static bool handleStandaloneDrumSteps();
 static bool handleStandaloneSynthSteps();
 static bool handleF1Combos();
 static bool handleF4DrumLaneCombos();
+static bool handleKitStepCombos();
 static bool handleF8ScaleRootCombos();
+static bool handleAcidBoxSelectModes();
 static void handleFunctionButtons();
 
 // ---------- PROCESS BUTTON EVENTS ----------
 void processButtons()
 {
+	// Handle AcidBox save/select modes FIRST (before F1 combo)
+	// These modes block all other handlers.
+	if (handleAcidBoxSelectModes())
+	{
+		return;
+	}
+
 	if (handleF1Combos())
 	{
 		// F1+F8 combo was handled — skip the normal F8 release handler this cycle
@@ -215,6 +235,12 @@ void processButtons()
 
 	// Standalone step press in synths mode: toggle step active/inactive
 	if (handleStandaloneSynthSteps())
+	{
+		return;
+	}
+
+	// Kit browser Step9 load (when in UI_KITS mode)
+	if (handleKitStepCombos())
 	{
 		return;
 	}
@@ -408,16 +434,32 @@ static bool handleF1Combos()
 		return false; // don't block other handlers
 	}
 
-	// F1+STEP_1 through F1+STEP_5: set edit mode (synth or drum depending on edit type)
-	const uint8_t F1_STEP_COUNT = 16;
-	for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + F1_STEP_COUNT; i++)
+	// ---- F1+Step9 (Drums mode only): enter KITS sub-mode ----
+	// Kits are scanned at startup — no SD access here, instant entry.
+	// Loading the kit happens on standalone Step9 press (see handleKitStepCombos).
+	if (currentEditType == Drm && isButtonJustPressed(BTN_STEP_9) && currentUiMode != UI_KITS)
+	{
+		// Enter KITS browser mode
+		currentUiMode = UI_KITS;
+		potLock();
+		refreshOLED = true;
+		ledsDirty = true;
+		return true; // Mark as consumed so no other handlers see BTN_STEP_9
+	}
+
+	// F1+STEP_1 through F1+STEP_5: set synth edit mode
+	// F1+STEP_1 through F1+STEP_8: set drum edit mode
+	for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
 	{
 		if (isButtonJustPressed(i))
 		{
+			// Skip Step9 - reserved for KITS mode entry
+			if (i == BTN_STEP_9) continue;
+
 			if (currentEditType < 2)
 			{
 				// Syn1 or Syn2: set synth edit mode
-				setSynthEditMode((SynthEditMode)i);
+				setSynthEditMode((SynthEditMode)(i - BTN_STEP_1));
 			}
 			else if (currentEditType == Drm && i <= BTN_STEP_8)
 			{
@@ -528,7 +570,285 @@ static bool handleF4DrumLaneCombos()
 	return false;
 }
 
-// ==================== F8 + STEP combos (SCALE / ROOT / BPM / SWING / MASTERVOL) ====================
+// ==================== KIT BROWSER (UI_KITS) STEP HANDLER ====================
+// When in UI_KITS mode, handles standalone Step9 press to load the selected kit.
+static bool handleKitStepCombos()
+{
+	if (currentUiMode != UI_KITS)
+		return false;
+
+	// Ignore if F1 is held — that's the entry combo, not the load action
+	if (isButtonPressed(BTN_F1))
+		return false;
+
+	// Step9 pressed alone (no F1): load the selected kit
+	for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+	{
+		if (isButtonJustPressed(i))
+		{
+			uint8_t step = i - BTN_STEP_1;
+			if (step == 8) // Step9 = index 8
+			{
+				Drums.LoadKitByIndex(Drums.GetKitIndex());
+				currentUiMode = UI_NORMAL;
+				potLock();
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
+		}
+	}
+
+	return false;
+}
+
+// ==================== ACIDBOX PATTERN/ SONG / BANK SELECT MODE HANDLING ====================
+// Long-press tracking for pattern save
+static uint32_t patternStepPressTime[16] = {0};
+static bool patternStepLongPressHandled[16] = {false};
+static const uint32_t PATTERN_LONG_PRESS_MS = 800;
+
+// Tracks whether the next F8 release should be suppressed (the one that
+// immediately follows entering the mode via F8+Step combo).
+static bool suppressF8ReleaseInSelectMode = false;
+
+// Handles UI_PATTERN_SELECT, UI_SONG_SELECT, UI_BANK_SELECT modes
+// Returns true if the event was consumed.
+static bool handleAcidBoxSelectModes()
+{
+    // Only handle these specific modes
+    if (currentUiMode != UI_PATTERN_SELECT && currentUiMode != UI_SONG_SELECT && currentUiMode != UI_BANK_SELECT)
+        return false;
+
+    // ---- Exit conditions ----
+    // F1+Step (any step): user is selecting a synth/drum edit mode → exit
+    if (isButtonPressed(BTN_F1))
+    {
+        for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+        {
+            if (isButtonJustPressed(i))
+            {
+                currentUiMode = UI_NORMAL;
+                refreshOLED = true;
+                ledsDirty = true;
+                return false; // let processButtons continue to handleF1Combos
+            }
+        }
+    }
+
+    // F1+F8: toggle JUKEBOX/EDIT → exit
+    if (isButtonJustPressed(BTN_F8) && isButtonPressed(BTN_F1))
+    {
+        currentUiMode = UI_NORMAL;
+        refreshOLED = true;
+        ledsDirty = true;
+        return false;
+    }
+
+    // F2/F3/F4 release (single click): switch edit type → exit
+    if (isButtonJustReleased(BTN_F2))
+    {
+        currentUiMode = UI_NORMAL;
+        refreshOLED = true;
+        ledsDirty = true;
+        return false;
+    }
+    if (isButtonJustReleased(BTN_F3))
+    {
+        currentUiMode = UI_NORMAL;
+        refreshOLED = true;
+        ledsDirty = true;
+        return false;
+    }
+    if (isButtonJustReleased(BTN_F4))
+    {
+        currentUiMode = UI_NORMAL;
+        refreshOLED = true;
+        ledsDirty = true;
+        return false;
+    }
+
+    // ---- F8 release: toggle sequencer start/stop ----
+    // The first F8 release after entering the mode is suppressed (it's the
+    // release that follows the F8+Step combo that entered the mode).
+    // Subsequent F8 releases toggle the sequencer while staying in the mode.
+    if (isButtonJustReleased(BTN_F8))
+    {
+        if (suppressF8ReleaseInSelectMode)
+        {
+            suppressF8ReleaseInSelectMode = false; // consume the suppression
+            return true; // block this release
+        }
+        // Let the F8 release through to the sequencer toggle in processButtons()
+        return false;
+    }
+
+    // ---- F8+Step switching between sub-modes ----
+    // When F8 is held, step buttons switch between modes instead of
+    // performing pattern/song/bank actions.
+    // F8+Step1 (A1) = Pattern Select
+    // F8+Step2 (A2) = Song Select
+    // F8+Step3 (A3) = Bank Select
+    if (isButtonPressed(BTN_F8))
+    {
+        if (isButtonJustPressed(BTN_STEP_1) && currentUiMode != UI_PATTERN_SELECT)
+        {
+            currentUiMode = UI_PATTERN_SELECT;
+            refreshAcidBoxBankCache();
+            refreshAcidBoxSongCache();
+            refreshAcidBoxPatternCache();
+            // Mark step 0 as already handled so its release won't trigger a load
+            patternStepPressTime[0] = millis();
+            patternStepLongPressHandled[0] = true;
+            refreshOLED = true;
+            ledsDirty = true;
+            return true;
+        }
+        if (isButtonJustPressed(BTN_STEP_2) && currentUiMode != UI_SONG_SELECT)
+        {
+            currentUiMode = UI_SONG_SELECT;
+            refreshAcidBoxSongCache();
+            refreshAcidBoxPatternCache();
+            refreshOLED = true;
+            ledsDirty = true;
+            return true;
+        }
+        if (isButtonJustPressed(BTN_STEP_3) && currentUiMode != UI_BANK_SELECT)
+        {
+            currentUiMode = UI_BANK_SELECT;
+            refreshAcidBoxBankCache();
+            refreshAcidBoxSongCache();
+            refreshAcidBoxPatternCache();
+            refreshOLED = true;
+            ledsDirty = true;
+            return true;
+        }
+        if (isButtonJustPressed(BTN_STEP_8))
+        {
+            currentUiMode = UI_BPM;
+            refreshOLED = true;
+            ledsDirty = true;
+            return true;
+        }
+        if (isButtonJustPressed(BTN_STEP_7))
+        {
+            currentUiMode = UI_SWING;
+            refreshOLED = true;
+            ledsDirty = true;
+            return true;
+        }
+        if (isButtonJustPressed(BTN_STEP_16))
+        {
+            currentUiMode = UI_MASTERVOL;
+            refreshOLED = true;
+            ledsDirty = true;
+            return true;
+        }
+        // Block all other handlers while F8 is held in select mode
+        return true;
+    }
+
+    // ---- Mode-specific handling ----
+    uint32_t now = millis();
+
+    if (currentUiMode == UI_PATTERN_SELECT)
+    {
+        // Step button handling for pattern select
+        for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+        {
+            uint8_t slot = i - BTN_STEP_1; // 0-15
+
+            if (isButtonJustPressed(i))
+            {
+                // Record press time for long-press detection
+                patternStepPressTime[slot] = now;
+                patternStepLongPressHandled[slot] = false;
+                refreshOLED = true;
+                ledsDirty = true;
+                return true;
+            }
+
+            // Long-press: save pattern to this slot
+            if (isButtonPressed(i) && !patternStepLongPressHandled[slot] &&
+                (now - patternStepPressTime[slot] >= PATTERN_LONG_PRESS_MS))
+            {
+                patternStepLongPressHandled[slot] = true;
+                // Save current pattern to this slot
+                if (saveCurrentPattern(slot))
+                {
+                    Serial.printf("💾 Saved pattern to slot %d (A%d/B%d)\n",
+                                  slot + 1,
+                                  slot < 8 ? slot + 1 : slot - 7,
+                                  slot < 8 ? 0 : 1);
+                }
+                refreshOLED = true;
+                ledsDirty = true;
+                return true;
+            }
+
+            // Release: load pattern from this slot (if it exists)
+            if (isButtonJustReleased(i))
+            {
+                if (!patternStepLongPressHandled[slot] && acidBoxSaveLoad.patternExistsCache[slot])
+                {
+                    // Load pattern from this slot
+                    if (loadCurrentPattern(slot))
+                    {
+                        Serial.printf("📂 Loaded pattern from slot %d\n", slot + 1);
+                    }
+                }
+                patternStepPressTime[slot] = 0;
+                patternStepLongPressHandled[slot] = false;
+                refreshOLED = true;
+                ledsDirty = true;
+                return true;
+            }
+        }
+    }
+    else if (currentUiMode == UI_SONG_SELECT)
+    {
+        // Step button: select song (A1-A8 = songs 0-7, B1-B8 = songs 8-15)
+        for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+        {
+            if (isButtonJustPressed(i))
+            {
+                uint8_t song = i - BTN_STEP_1;
+                acidBoxSaveLoad.currentSong = song;
+                refreshAcidBoxSongCache();
+                refreshAcidBoxPatternCache();
+                refreshOLED = true;
+                ledsDirty = true;
+                return true;
+            }
+        }
+    }
+    else if (currentUiMode == UI_BANK_SELECT)
+    {
+        // Step button: select bank (A1-A8 = banks 0-7, B1-B8 = banks 8-15)
+        for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+        {
+            if (isButtonJustPressed(i))
+            {
+                uint8_t bank = i - BTN_STEP_1;
+                acidBoxSaveLoad.currentBank = bank;
+                refreshAcidBoxBankCache();
+                refreshAcidBoxSongCache();
+                refreshAcidBoxPatternCache();
+                refreshOLED = true;
+                ledsDirty = true;
+                return true;
+            }
+        }
+    }
+
+    // Block all other handlers while in select mode
+    return true;
+}
+
+// ==================== F8 + STEP combos (SCALE / ROOT / BPM / SWING / MASTERVOL / PATTERN / SONG / BANK) ====================
+// F8+Step1  (BTN_STEP_1)  enters UI_PATTERN_SELECT mode — browse/select patterns.
+// F8+Step2  (BTN_STEP_2)  enters UI_SONG_SELECT mode — browse/select songs.
+// F8+Step3  (BTN_STEP_3)  enters UI_BANK_SELECT mode — browse/select banks.
 // F8+Step9  (BTN_STEP_9)  enters UI_SCALE mode — pot selects the scale.
 // F8+Step10 (BTN_STEP_10) enters UI_ROOT mode — pot selects the root note.
 // F8+Step8  (BTN_STEP_8)  enters UI_BPM mode — pot sets BPM.
@@ -599,9 +919,51 @@ static bool handleF8ScaleRootCombos()
 			return false; // let processButtons continue to handleFunctionButtons
 		}
 
-		// Allow switching between sub-modes while F8 is held
+	// ---- F8 release: pass through to sequencer toggle in processButtons() ----
+	// For UI_PATTERN_SELECT, UI_SONG_SELECT, and UI_BANK_SELECT modes, the
+	// F8 release is handled by handleAcidBoxSelectModes(). If it returned false,
+	// we need to let it through to the sequencer toggle in processButtons().
+	if (isButtonJustReleased(BTN_F8) &&
+	    (currentUiMode == UI_PATTERN_SELECT || currentUiMode == UI_SONG_SELECT || currentUiMode == UI_BANK_SELECT))
+	{
+		return false;
+	}
+
+	// Allow switching between sub-modes while F8 is held
 		if (isButtonPressed(BTN_F8))
 		{
+			if (isButtonJustPressed(BTN_STEP_1) && currentUiMode != UI_PATTERN_SELECT)
+			{
+				currentUiMode = UI_PATTERN_SELECT;
+				refreshAcidBoxBankCache();
+				refreshAcidBoxSongCache();
+				refreshAcidBoxPatternCache();
+				// Mark step 0 as handled so its release won't trigger a load
+				patternStepPressTime[0] = millis();
+				patternStepLongPressHandled[0] = true;
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
+			if (isButtonJustPressed(BTN_STEP_2) && currentUiMode != UI_SONG_SELECT)
+			{
+				currentUiMode = UI_SONG_SELECT;
+				refreshAcidBoxSongCache();
+				refreshAcidBoxPatternCache();
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
+			if (isButtonJustPressed(BTN_STEP_3) && currentUiMode != UI_BANK_SELECT)
+			{
+				currentUiMode = UI_BANK_SELECT;
+				refreshAcidBoxBankCache();
+				refreshAcidBoxSongCache();
+				refreshAcidBoxPatternCache();
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
 			if (isButtonJustPressed(BTN_STEP_9) && currentUiMode != UI_SCALE)
 			{
 				currentUiMode = UI_SCALE;
@@ -646,6 +1008,47 @@ static bool handleF8ScaleRootCombos()
 	// Only enter sub-modes when F8 is held
 	if (!isButtonPressed(BTN_F8))
 		return false;
+
+	// F8+Step1: enter PATTERN SELECT mode
+	if (isButtonJustPressed(BTN_STEP_1))
+	{
+		currentUiMode = UI_PATTERN_SELECT;
+		refreshAcidBoxBankCache();
+		refreshAcidBoxSongCache();
+		refreshAcidBoxPatternCache();
+		// Mark step 0 as handled so its release won't trigger a load
+		patternStepPressTime[0] = millis();
+		patternStepLongPressHandled[0] = true;
+		suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
+		refreshOLED = true;
+		ledsDirty = true;
+		return true; // suppresses F8 release toggle
+	}
+
+	// F8+Step2: enter SONG SELECT mode
+	if (isButtonJustPressed(BTN_STEP_2))
+	{
+		currentUiMode = UI_SONG_SELECT;
+		refreshAcidBoxSongCache();
+		refreshAcidBoxPatternCache();
+		suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
+		refreshOLED = true;
+		ledsDirty = true;
+		return true; // suppresses F8 release toggle
+	}
+
+	// F8+Step3: enter BANK SELECT mode
+	if (isButtonJustPressed(BTN_STEP_3))
+	{
+		currentUiMode = UI_BANK_SELECT;
+		refreshAcidBoxBankCache();
+		refreshAcidBoxSongCache();
+		refreshAcidBoxPatternCache();
+		suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
+		refreshOLED = true;
+		ledsDirty = true;
+		return true; // suppresses F8 release toggle
+	}
 
 	// F8+Step9: enter SCALE mode
 	if (isButtonJustPressed(BTN_STEP_9))

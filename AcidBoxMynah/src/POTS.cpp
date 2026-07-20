@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "config.h"
 #include "general.h"
+#include "sampler.h"
 #include "midi_handler.h"
 #include "sequencer.h"
 #include "SCALES.h"
@@ -144,6 +145,25 @@ void handlePot(uint16_t potVal)
 		return;
 	}
 
+	// ---- KITS mode: pot scrolls through available kits ----
+	if (currentUiMode == UI_KITS)
+	{
+		int kitCount = Drums.GetKitCount();
+		if (kitCount > 0)
+		{
+			int newIndex = (int)((float)potVal / 4095.0f * (float)kitCount);
+			if (newIndex >= kitCount) newIndex = kitCount - 1;
+			if (newIndex < 0) newIndex = 0;
+			if (newIndex != Drums.GetKitIndex())
+			{
+				Drums.SetKitIndex(newIndex);
+				refreshOLED = true;
+				ledsDirty = true;
+			}
+		}
+		return;
+	}
+
 	// ---- MASTERVOL mode: pot sets master volume (0..100%) ----
 	if (currentUiMode == UI_MASTERVOL)
 	{
@@ -153,6 +173,53 @@ void handlePot(uint16_t potVal)
 		if (fabs(newVol - masterVolume) > 0.005f)
 		{
 			masterVolume = newVol;
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
+	// ---- PATTERN_SELECT mode: pot scrolls through patterns ----
+	if (currentUiMode == UI_PATTERN_SELECT)
+	{
+		uint8_t newPattern = (uint8_t)((float)potVal / 4095.0f * 15.0f + 0.5f);
+		if (newPattern > 15) newPattern = 15;
+		if (newPattern != acidBoxSaveLoad.currentPattern)
+		{
+			acidBoxSaveLoad.currentPattern = newPattern;
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
+	// ---- SONG_SELECT mode: pot scrolls through songs ----
+	if (currentUiMode == UI_SONG_SELECT)
+	{
+		uint8_t newSong = (uint8_t)((float)potVal / 4095.0f * 15.0f + 0.5f);
+		if (newSong > 15) newSong = 15;
+		if (newSong != acidBoxSaveLoad.currentSong)
+		{
+			acidBoxSaveLoad.currentSong = newSong;
+			refreshAcidBoxSongCache();
+			refreshAcidBoxPatternCache();
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
+	// ---- BANK_SELECT mode: pot scrolls through banks ----
+	if (currentUiMode == UI_BANK_SELECT)
+	{
+		uint8_t newBank = (uint8_t)((float)potVal / 4095.0f * 15.0f + 0.5f);
+		if (newBank > 15) newBank = 15;
+		if (newBank != acidBoxSaveLoad.currentBank)
+		{
+			acidBoxSaveLoad.currentBank = newBank;
+			refreshAcidBoxBankCache();
+			refreshAcidBoxSongCache();
+			refreshAcidBoxPatternCache();
 			refreshOLED = true;
 			ledsDirty = true;
 		}

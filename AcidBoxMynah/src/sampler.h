@@ -3,6 +3,8 @@
 
 #include <FS.h>
 #include <SD_MMC.h>
+#include <vector>
+#include <string>
 #include "midi_config.h"
 #include "fx_filtercrusher.h"
 
@@ -45,6 +47,16 @@ DEBF("Select note: %d\r\n", note);
     void PitchBend(int number);
     float _sendReverb = 0.0f;
     float _sendDelay = 0.0f;
+
+    // ---- KIT BROWSER ----
+    void ScanKitDirectories();  // enumerate /ACIDBOX/KITS/ subdirs once per session
+    int  GetKitCount()    { return (int)kitNames.size(); }
+    int  GetKitIndex()    { return kitSelectIndex; }
+    void SetKitIndex(int i);
+    const char* GetKitName(int i);
+    const char* GetCurrentKitName(); // returns kitNames[kitSelectIndex] or "---"
+    void LoadKitByIndex(int i); // calls SetProgram with appropriate number
+    bool isKitListReady() { return kitListReady; }
     
   private:
     void LoadEmbeddedSamples();
@@ -129,6 +141,14 @@ DEBF("Select note: %d\r\n", note);
     uint8_t* RamCache = NULL ;
 
     FxFilterCrusher Effects;
+
+    // ---- KIT BROWSER STATE ----
+    bool kitListReady = false;
+    int kitSelectIndex = 0;
+    std::vector<std::string> kitNames;
+    void readKitDirCache();
+    void writeKitDirCache();
+    static uint32_t kitSessionNonce;
 };
 
 #endif

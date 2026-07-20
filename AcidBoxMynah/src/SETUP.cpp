@@ -119,6 +119,9 @@ void setup(void) {
   Synth2.Init();
   Serial.println("Initializing Drums...");
   Drums.Init();
+  // Scan /ACIDBOX/KITS/ directories at startup (one-time cost during boot)
+  // so entering KITS browser mode at runtime is instant with zero SD access.
+  Drums.ScanKitDirectories();
 #ifndef NO_PSRAM
   Serial.println("Initializing Reverb...");
   Reverb.Init();
@@ -133,6 +136,9 @@ void setup(void) {
 
   // Initialize the 16-step sequencer engine
   sequencer_init();
+
+  // Initialize the AcidBox save/load system (creates /ACIDBOX/BANKS/ dirs)
+  acidbox_save_init();
 
   // silence while we haven't loaded anything reasonable
   for (int i = 0; i < DMA_BUF_LEN; i++) {

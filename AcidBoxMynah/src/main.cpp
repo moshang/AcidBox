@@ -612,6 +612,85 @@ void neopixelInit()
 void updateLEDS() {
   if (!ledsDirty) return;
 
+  // ---- AcidBox Bank/Song/Pattern select modes ----
+  // Color scheme (matching MYNAH project):
+  //   Current slot           : White (255,255,255)
+  //   Current slot, modified : Yellow/orange (200,150,0) [pattern only]
+  //   Occupied slot          : Green (0,100,0)
+  //   Empty slot             : Dim purple (20,0,20) [PATTERN_SELECT]
+  //                          : Dim blue   (0,0,30)  [SONG_SELECT]
+  //                          : Dim red    (30,0,0)  [BANK_SELECT]
+  //   Playback position      : 20% of the slot's own colour (sequencer running only)
+  if (currentUiMode == UI_PATTERN_SELECT || currentUiMode == UI_SONG_SELECT || currentUiMode == UI_BANK_SELECT)
+  {
+    for (int i = 0; i < 16; i++)
+    {
+      bool isCurrent = false;
+      bool slotExists = false;
+
+      if (currentUiMode == UI_PATTERN_SELECT)
+      {
+        slotExists = acidBoxSaveLoad.patternExistsCache[i];
+        isCurrent = (i == acidBoxSaveLoad.currentPattern);
+      }
+      else if (currentUiMode == UI_SONG_SELECT)
+      {
+        slotExists = acidBoxSaveLoad.songExistsCache[i];
+        isCurrent = (i == acidBoxSaveLoad.currentSong);
+      }
+      else if (currentUiMode == UI_BANK_SELECT)
+      {
+        slotExists = acidBoxSaveLoad.bankExistsCache[i];
+        isCurrent = (i == acidBoxSaveLoad.currentBank);
+      }
+
+      if (isCurrent)
+      {
+        if (currentUiMode == UI_PATTERN_SELECT && acidBoxSaveLoad.modified)
+        {
+          // Current slot with unsaved changes: yellow/orange
+          strip.SetPixelColor(i, RgbColor(200, 150, 0));
+        }
+        else
+        {
+          // Current slot: white
+          strip.SetPixelColor(i, RgbColor(255, 255, 255));
+        }
+      }
+      else if (slotExists)
+      {
+        // Occupied slot: green
+        strip.SetPixelColor(i, RgbColor(0, 100, 0));
+      }
+      else
+      {
+        // Empty slot: dim colour per mode
+        if (currentUiMode == UI_SONG_SELECT)
+          strip.SetPixelColor(i, RgbColor(0, 0, 30));   // dim blue
+        else if (currentUiMode == UI_BANK_SELECT)
+          strip.SetPixelColor(i, RgbColor(30, 0, 0));   // dim red
+        else
+          strip.SetPixelColor(i, RgbColor(20, 0, 20));  // dim purple (pattern)
+      }
+    }
+
+    // Playback position overlay: dim the current step to 20% of its set colour
+    // so the sequencer position is visible even while browsing slots.
+    if (globalSeq.isPlaying)
+    {
+      uint8_t step = globalSeq.currentStep;
+      RgbColor col = strip.GetPixelColor(step);
+      uint8_t r = col.R / 5;
+      uint8_t g = col.G / 5;
+      uint8_t b = col.B / 5;
+      strip.SetPixelColor(step, RgbColor(r, g, b));
+    }
+
+    strip.Show();
+    ledsDirty = false;
+    return;
+  }
+
 if (currentMode == MODE_JUKEBOX)
 {
   // In jukebox mode the neopixel visualizer drives the LEDs.
@@ -695,6 +774,10 @@ void regular_checks() {
   timer1_fired = false;
   
   midi_read();
+
+  // Process any deferred drum kit loads (avoids WDT timeout during Init())
+  processDeferredKitLoad();
+  
   
 #ifdef JUKEBOX
   if (currentMode == MODE_JUKEBOX) {

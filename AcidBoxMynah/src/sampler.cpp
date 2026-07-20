@@ -1,20 +1,22 @@
 /*
    this file includes the implementation of the sample player
-   samples are loaded from SD card (SAMPLES/AcidBox/{kit}/) or
+   samples are loaded from SD card (/ACIDBOX/KITS{kit}/) or
    fall back to embedded samples in samples.h
 
    Author: Marcel Licence
 
    Modifications:
    2021-04-05 E.Heinemann changed BLOCKSIZE from 2024 to 1024
-               , added DEBUG_SAMPLER
-               , added sampleRate to the structure of samplePlayerS to optimize the pitch based on lower samplerates
+                , added DEBUG_SAMPLER
+                , added sampleRate to the structure of samplePlayerS to optimize the pitch based on lower samplerates
    2021-07-28 E.Heinemann, added pitch-decay and pan
    2021-08-03 E.Heinemann, changed Accent/normal Velocity in the code
    2022-11-27 Copych, made this a class, made it use one big PSRAM buffer for drumkit wav data
    2023-01-20 Copych, changed midi cc handling, now it affects instruments, not the sample players
    2023-03-02 Copych, preload all 3MB of samples from flash to PSRAM to be able of switching kits in realtime
    2026-06-25 Moshang, switched from LittleFS to SD_MMC for sample loading; embedded fallback
+   2026-07-20 Fixed: removed `static` from buffPointer in Init() to prevent buffer corruption on kit reload;
+            added delay(1) in sample read loop to prevent WDT timeout reboot.
  */
 #include <Arduino.h>
 #include "general.h"
@@ -144,8 +146,15 @@ void Sampler::ScanContents(fs::FS &fs, const char *dirname, uint8_t levels) {
       if ( sampleInfoCount < SAMPLECNT ) {
         str = (String)(file.name());
         str = (String)dirname + "/" + str;
-        strncpy( filenames[ sampleInfoCount ], str.c_str() , 32);
-        sampleInfoCount ++;
+        const size_t pathCap = sizeof(filenames[sampleInfoCount]);
+        if (str.length() >= pathCap) {
+          Serial.printf("[Sampler] Skipping too-long path (%u >= %u): %s\n",
+                        (unsigned)str.length(), (unsigned)pathCap, str.c_str());
+        } else {
+          strncpy(filenames[sampleInfoCount], str.c_str(), pathCap - 1);
+          filenames[sampleInfoCount][pathCap - 1] = '\0';
+          sampleInfoCount++;
+        }
       }
     }
     delay(1);
@@ -159,9 +168,15 @@ void Sampler::Init() {
   Effects.Init();
   Effects.SetBitCrusher( 0.0f );
 
-  Serial.println("  Checking SD card for SAMPLES/AcidBox...");
+  // SHIELD the sampler: zero out count so Process() ignores the buffer during reload
+  sampleInfoCount = 0; 
+  memset(filenames, 0, sizeof(filenames));
+  delay(50); // Give audio task time to see sampleInfoCount=0 (audio task runs at 44.1kHz)
+  yield();   // Ensure any pending WDT servicing runs
 
-  // Diagnostic: list SD card root contents
+  Serial.println("  Checking SD card for /ACIDBOX/KITS...");
+
+  // Diagnostic: list SD card root contents (with yield to avoid WDT)
   if (SD_MMC.cardType() != CARD_NONE) {
     Serial.println("  --- SD Card Root Directory ---");
     File root = SD_MMC.open("/");
@@ -173,6 +188,8 @@ void Sampler::Init() {
         } else {
           Serial.printf("    [FILE] %s  (%u bytes)\n", entry.name(), entry.size());
         }
+        delay(1);
+        yield();
         entry = root.openNextFile();
       }
       root.close();
@@ -182,17 +199,17 @@ void Sampler::Init() {
     Serial.println("  -----------------------------");
   }
 
-  // Build the path relative to SD mount: SAMPLES/AcidBox/{progNumber}
-  // (SD_MMC.begin("/sdcard") means root is /sdcard, so open("/SAMPLES/...") resolves correctly)
+  // Build the path relative to SD mount: /ACIDBOX/KITS/{progNumber}
+  // (SD_MMC.begin("/sdcard") means root is /sdcard, so open("/ACIDBOX/...") resolves correctly)
   // NOTE: Do NOT add a trailing slash to the path! The ESP32 VFS/FAT driver interprets
   // a trailing slash as a missing filename inside the directory, causing open() to fail.
 #ifdef NO_PSRAM
-  String sdKitPath = "/SAMPLES/AcidBox/" + (String)progNumber;
+  String sdKitPath = "/ACIDBOX/KITS/" + (String)progNumber;
 #else
   #ifdef PRELOAD_ALL
-    String sdKitPath = "/SAMPLES/AcidBox";
+    String sdKitPath = "/ACIDBOX/KITS";
   #else
-    String sdKitPath = "/SAMPLES/AcidBox/" + (String)progNumber;
+    String sdKitPath = "/ACIDBOX/KITS/" + (String)progNumber;
   #endif
 #endif
 
@@ -262,6 +279,13 @@ void Sampler::Init() {
 #ifdef DEBUG_SAMPLER
   DEBUG("---\nList Samples:");
 #endif
+  // Local buffPointer — NOT static, resets to 0 on every Init() call
+  size_t buffPointer = 0;
+#ifndef NO_PSRAM
+  const size_t cacheLimit = PSRAM_SAMPLER_CACHE;
+#else
+  const size_t cacheLimit = RAM_SAMPLER_CACHE;
+#endif
   for (int i = 0; i < sampleInfoCount; i++ ) {
 #ifdef DEBUG_SAMPLER
     DEBF( "s[%d]: %s\n", i, filenames[i] );
@@ -275,7 +299,6 @@ void Sampler::Init() {
         size_t len = f.size();
         size_t toRead = 512;
         size_t oldPointer = 0;
-        static size_t buffPointer = 0;
 
         union wavHeader wav;
         if ( len ) {
@@ -293,11 +316,25 @@ void Sampler::Init() {
           } else {
             toRead = len;
           }
+          if (buffPointer + toRead > cacheLimit) {
+            Serial.printf("[Sampler] Cache full while loading %s at sample %d\n", filenames[i], i);
+            len = 0;
+            break;
+          }
           f.read(&(RamCache[buffPointer]), toRead);
           buffPointer += toRead;
           len -= toRead;
+          // Yield to prevent WDT timeout during SD card reads
+          delay(1);
         }
         wav.dataSize = min((size_t)wav.dataSize, buffPointer - oldPointer);
+
+        // If nothing fit in cache for this sample, stop loading further entries.
+        if (wav.dataSize == 0) {
+          sampleInfoCount = i;
+          f.close();
+          break;
+        }
 
         samplePlayer[i].sampleRate =      wav.sampleRate;
 #ifdef DEBUG_SAMPLER
@@ -754,4 +791,155 @@ void Sampler::Process( float *left, float *right ) {
    *right = fclamp(signal_r * _volume, -1.0f, 1.0f);
   // *left  = fast_shape(signal_l * _volume);
   // *right = fast_shape(signal_r * _volume);
+}
+
+// ============================================================
+// KIT BROWSER — scan /ACIDBOX/KITS/ subdirectories
+// Uses the same nonce-based .dircache pattern as the MYNAH browser.
+// ============================================================
+
+uint32_t Sampler::kitSessionNonce = 0;
+
+void Sampler::readKitDirCache() {
+    if (kitSessionNonce == 0) return;
+
+    File f = SD_MMC.open("/ACIDBOX/KITS/.dircache", FILE_READ);
+    if (!f) return;
+
+    String firstLine = f.readStringUntil('\n');
+    firstLine.trim();
+    if (!firstLine.startsWith("nonce:")) { f.close(); return; }
+    uint32_t storedNonce = (uint32_t)strtoul(firstLine.substring(6).c_str(), nullptr, 16);
+    if (storedNonce != kitSessionNonce) { f.close(); return; }
+
+    kitNames.clear();
+    while (f.available()) {
+        String line = f.readStringUntil('\n');
+        line.trim();
+        if (line.length() < 2) continue; // "d:" + at least 1 char
+        if (line.charAt(0) != 'd' || line.charAt(1) != ':') continue;
+        kitNames.push_back(std::string(line.substring(2).c_str()));
+    }
+    f.close();
+    Serial.printf("[KitCache] HIT  /ACIDBOX/KITS  (%d kits)\n", (int)kitNames.size());
+}
+
+void Sampler::writeKitDirCache() {
+    if (kitSessionNonce == 0) return;
+
+    char cachePath[160];
+    snprintf(cachePath, sizeof(cachePath), "/ACIDBOX/KITS/.dircache");
+    if (SD_MMC.exists(cachePath)) SD_MMC.remove(cachePath);
+
+    File f = SD_MMC.open(cachePath, FILE_WRITE);
+    if (!f) {
+        Serial.printf("[KitCache] WARN: cannot write cache\n");
+        return;
+    }
+
+    f.printf("nonce:%08X\n", kitSessionNonce);
+    for (const auto& name : kitNames) {
+        f.printf("d:%s\n", name.c_str());
+    }
+    f.close();
+    Serial.printf("[KitCache] WROTE /ACIDBOX/KITS  (%d kits)\n", (int)kitNames.size());
+}
+
+void Sampler::ScanKitDirectories() {
+    kitNames.clear();
+    kitSelectIndex = 0;
+
+    if (SD_MMC.cardType() == CARD_NONE) {
+        kitListReady = true;
+        return;
+    }
+
+    // Generate nonce once per session
+    if (kitSessionNonce == 0) {
+        kitSessionNonce = esp_random();
+        if (kitSessionNonce == 0) kitSessionNonce = 1;
+        Serial.printf("[KitCache] Session nonce: %08X\n", kitSessionNonce);
+    }
+
+    // Try cache first
+    readKitDirCache();
+    if (!kitNames.empty()) {
+        kitListReady = true;
+        return;
+    }
+
+    // Full enumeration
+    File root = SD_MMC.open("/ACIDBOX/KITS");
+    if (!root || !root.isDirectory()) {
+        Serial.println("[Kits] /ACIDBOX/KITS not found on SD");
+        kitListReady = true;
+        return;
+    }
+
+    File entry = root.openNextFile();
+    while (entry) {
+        if (entry.isDirectory()) {
+            String name = entry.name();
+            // Extract just the folder name (last component)
+            int lastSlash = name.lastIndexOf('/');
+            if (lastSlash >= 0) name = name.substring(lastSlash + 1);
+            if (name.length() > 0 && !name.startsWith(".") && !name.equalsIgnoreCase("System Volume Information")) {
+                kitNames.push_back(std::string(name.c_str()));
+                Serial.printf("[Kits] Found: %s\n", name.c_str());
+            }
+        }
+        entry = root.openNextFile();
+    }
+    root.close();
+
+    // Sort alphabetically
+    std::sort(kitNames.begin(), kitNames.end());
+
+    writeKitDirCache();
+    kitListReady = true;
+    Serial.printf("[Kits] Found %d kit directories\n", (int)kitNames.size());
+}
+
+void Sampler::SetKitIndex(int i) {
+    if (i < 0) i = (int)kitNames.size() - 1;
+    if (i >= (int)kitNames.size()) i = 0;
+    kitSelectIndex = i;
+}
+
+const char* Sampler::GetKitName(int i) {
+    if (i < 0 || i >= (int)kitNames.size()) return "---";
+    return kitNames[i].c_str();
+}
+
+const char* Sampler::GetCurrentKitName() {
+    if (kitSelectIndex < 0 || kitSelectIndex >= (int)kitNames.size()) return "---";
+    return kitNames[kitSelectIndex].c_str();
+}
+
+void Sampler::LoadKitByIndex(int i) {
+    if (i < 0 || i >= (int)kitNames.size()) return;
+    // Mute audio output during loading to avoid clicks/pops/distortion
+    // from the PSRAM re-allocation and SD card reads.
+    float savedVol = _volume;
+    SetVolume(0.0f);
+    allNotesOff();
+
+    // Extract numeric part from folder name like "KITS1", "KITS2", or "1", "kit_3"
+    // Default to index+1 if we can't parse it
+    const char* name = kitNames[i].c_str();
+    int kitNum = i + 1; // fallback
+    // Try to extract trailing digits
+    const char* p = name;
+    while (*p) {
+        if (*p >= '0' && *p <= '9') {
+            kitNum = atoi(p);
+            break;
+        }
+        p++;
+    }
+    Serial.printf("[Kits] Loading kit %d (folder: %s)\n", kitNum, name);
+    SetProgram((uint8_t)kitNum);
+
+    // Restore volume after load completes
+    SetVolume(savedVol);
 }

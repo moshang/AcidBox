@@ -3,6 +3,7 @@
 #include <Wire.h>
 #include "config.h"
 #include "general.h"
+#include "sampler.h"
 #include "UI.h"
 #include "sequencer.h"
 #include "SCALES.h"
@@ -112,6 +113,33 @@ void updateOLED()
         return;
     }
 
+    // ---- UI_KITS mode: show KITS on line 1, kit folder name on line 2 ----
+    if (currentUiMode == UI_KITS)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("KITS");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        int kc = Drums.GetKitCount();
+        if (kc > 0)
+        {
+            int ki = Drums.GetKitIndex();
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%s", Drums.GetKitName(ki));
+            u8g2.print(buf);
+        }
+        else
+        {
+            u8g2.print("NO KITS");
+        }
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
     // ---- UI_MASTERVOL mode: show VOLUME on line 1, value on line 2 ----
     if (currentUiMode == UI_MASTERVOL)
     {
@@ -123,6 +151,66 @@ void updateOLED()
         u8g2.setCursor(0, 45);
         char buf[16];
         snprintf(buf, sizeof(buf), "%d%%", (int)(masterVolume * 100.0f));
+        u8g2.print(buf);
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
+    // ---- UI_PATTERN_SELECT mode ----
+    if (currentUiMode == UI_PATTERN_SELECT)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("PATTERN");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        // Show current pattern slot (1-16) and bank/song context
+        char buf[32];
+        snprintf(buf, sizeof(buf), "P%02d  B%02d S%02d",
+                 acidBoxSaveLoad.currentPattern + 1,
+                 acidBoxSaveLoad.currentBank + 1,
+                 acidBoxSaveLoad.currentSong + 1);
+        u8g2.print(buf);
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
+    // ---- UI_SONG_SELECT mode ----
+    if (currentUiMode == UI_SONG_SELECT)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("SONG");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        char buf[32];
+        snprintf(buf, sizeof(buf), "S%02d  B%02d",
+                 acidBoxSaveLoad.currentSong + 1,
+                 acidBoxSaveLoad.currentBank + 1);
+        u8g2.print(buf);
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
+    // ---- UI_BANK_SELECT mode ----
+    if (currentUiMode == UI_BANK_SELECT)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("BANK");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        char buf[32];
+        snprintf(buf, sizeof(buf), "B%02d", acidBoxSaveLoad.currentBank + 1);
         u8g2.print(buf);
 
         u8g2.sendBuffer();

@@ -6,6 +6,7 @@
 #include "midi_config.h"
 #include "sequencer.h"
 #include "UI.h"
+#include "SAVE.h"
 #include <NeoPixelBusLg.h>
 
 // Forward declare the classes so we can use pointers/references

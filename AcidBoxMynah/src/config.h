@@ -172,7 +172,7 @@ const uint8_t POT_PINS[POT_NUM] = {34, 35, 36};
 //   Total:   ~2.0 MB
 #define PSRAM_SAMPLER_CACHE 1572864 // 1.5 MB — fits comfortably in 2MB PSRAM with delay buffer
 #define SAMPLECNT       (7 * 12)    // how many samples we prepare (7 octaves by 12 samples)
-#define DEFAULT_DRUMKIT 1           // kit 1 = folder /1/ (SD card: SAMPLES/AcidBox/1/)
+#define DEFAULT_DRUMKIT 1           // kit 1 = folder KITS1 (SD card: /ACIDBOX/KITS1/)
 
 #define TINY 1e-32;
 

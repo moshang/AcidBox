@@ -1,6 +1,6 @@
 #pragma once
-#ifndef UI_H   
-#define UI_H   
+#ifndef UI_H
+#define UI_H
 
 // what are we editing? (synth1, synth2, drums, global)
 enum EditType {
@@ -65,7 +65,11 @@ enum UiMode {
   UI_ROOT,        // F8+Step10: pot selects the root note
   UI_BPM,         // F8+Step8: pot sets BPM
   UI_SWING,       // F8+Step7: pot sets swing
-  UI_MASTERVOL    // F8+Step16: pot sets master volume
+  UI_MASTERVOL,   // F8+Step16: pot sets master volume
+  UI_KITS,        // F1+Step9 (Drums mode): browse and load drum kits from SD
+  UI_PATTERN_SELECT,  // F8+Step9: pattern browse/select mode
+  UI_SONG_SELECT,     // F8+Step10: song browse/select mode
+  UI_BANK_SELECT      // F8+Step11: bank browse/select mode
 };
 extern UiMode currentUiMode;
 
@@ -74,4 +78,4 @@ void setSynthEditMode(SynthEditMode mode);
 void setDrumEditMode(DrumEditMode mode);
 void setDrumLane(uint8_t laneIndex);  // 0-15, maps to 1<<laneIndex
 
-#endif
+#endif // UI_H
