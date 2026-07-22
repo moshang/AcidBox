@@ -632,6 +632,7 @@ static bool handleAcidBoxSelectModes()
             if (isButtonJustPressed(i))
             {
                 currentUiMode = UI_NORMAL;
+                potLock(); // Lock pot to prevent parameter jumps
                 refreshOLED = true;
                 ledsDirty = true;
                 return false; // let processButtons continue to handleF1Combos
@@ -643,6 +644,7 @@ static bool handleAcidBoxSelectModes()
     if (isButtonJustPressed(BTN_F8) && isButtonPressed(BTN_F1))
     {
         currentUiMode = UI_NORMAL;
+        potLock(); // Lock pot to prevent parameter jumps
         refreshOLED = true;
         ledsDirty = true;
         return false;
@@ -652,6 +654,7 @@ static bool handleAcidBoxSelectModes()
     if (isButtonJustReleased(BTN_F2))
     {
         currentUiMode = UI_NORMAL;
+        potLock(); // Lock pot to prevent parameter jumps
         refreshOLED = true;
         ledsDirty = true;
         return false;
@@ -659,6 +662,7 @@ static bool handleAcidBoxSelectModes()
     if (isButtonJustReleased(BTN_F3))
     {
         currentUiMode = UI_NORMAL;
+        potLock(); // Lock pot to prevent parameter jumps
         refreshOLED = true;
         ledsDirty = true;
         return false;
@@ -666,6 +670,7 @@ static bool handleAcidBoxSelectModes()
     if (isButtonJustReleased(BTN_F4))
     {
         currentUiMode = UI_NORMAL;
+        potLock(); // Lock pot to prevent parameter jumps
         refreshOLED = true;
         ledsDirty = true;
         return false;
@@ -882,6 +887,7 @@ static bool handleF8ScaleRootCombos()
 				if (isButtonJustPressed(i))
 				{
 					currentUiMode = UI_NORMAL;
+					potLock(); // Lock pot to prevent parameter jumps
 					refreshOLED = true;
 					ledsDirty = true;
 					return false; // let processButtons continue to handleF1Combos
@@ -893,6 +899,7 @@ static bool handleF8ScaleRootCombos()
 		if (isButtonJustPressed(BTN_F8) && isButtonPressed(BTN_F1))
 		{
 			currentUiMode = UI_NORMAL;
+			potLock(); // Lock pot to prevent parameter jumps
 			refreshOLED = true;
 			ledsDirty = true;
 			return false; // let processButtons continue to handleF1Combos
@@ -903,6 +910,7 @@ static bool handleF8ScaleRootCombos()
 		if (isButtonJustReleased(BTN_F2) && !suppressF2Release)
 		{
 			currentUiMode = UI_NORMAL;
+			potLock(); // Lock pot to prevent parameter jumps
 			refreshOLED = true;
 			ledsDirty = true;
 			return false; // let processButtons continue to handleFunctionButtons
@@ -910,6 +918,7 @@ static bool handleF8ScaleRootCombos()
 		if (isButtonJustReleased(BTN_F3) && !suppressF3Release)
 		{
 			currentUiMode = UI_NORMAL;
+			potLock(); // Lock pot to prevent parameter jumps
 			refreshOLED = true;
 			ledsDirty = true;
 			return false; // let processButtons continue to handleFunctionButtons
@@ -917,6 +926,7 @@ static bool handleF8ScaleRootCombos()
 		if (isButtonJustReleased(BTN_F4))
 		{
 			currentUiMode = UI_NORMAL;
+			potLock(); // Lock pot to prevent parameter jumps
 			refreshOLED = true;
 			ledsDirty = true;
 			return false; // let processButtons continue to handleFunctionButtons
@@ -938,6 +948,7 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_1) && currentUiMode != UI_PATTERN_SELECT)
 			{
 				currentUiMode = UI_PATTERN_SELECT;
+				potLock(); // Lock pot to prevent parameter jumps
 				refreshAcidBoxBankCache();
 				refreshAcidBoxSongCache();
 				refreshAcidBoxPatternCache();
@@ -951,6 +962,7 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_2) && currentUiMode != UI_SONG_SELECT)
 			{
 				currentUiMode = UI_SONG_SELECT;
+				potLock(); // Lock pot to prevent parameter jumps
 				refreshAcidBoxSongCache();
 				refreshAcidBoxPatternCache();
 				refreshOLED = true;
@@ -960,6 +972,7 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_3) && currentUiMode != UI_BANK_SELECT)
 			{
 				currentUiMode = UI_BANK_SELECT;
+				potLock(); // Lock pot to prevent parameter jumps
 				refreshAcidBoxBankCache();
 				refreshAcidBoxSongCache();
 				refreshAcidBoxPatternCache();
@@ -970,6 +983,7 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_9) && currentUiMode != UI_SCALE)
 			{
 				currentUiMode = UI_SCALE;
+				potLock(); // Lock pot to prevent parameter jumps
 				refreshOLED = true;
 				ledsDirty = true;
 				return true;
@@ -977,6 +991,7 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_10) && currentUiMode != UI_ROOT)
 			{
 				currentUiMode = UI_ROOT;
+				potLock(); // Lock pot to prevent parameter jumps
 				refreshOLED = true;
 				ledsDirty = true;
 				return true;
@@ -984,6 +999,7 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_8) && currentUiMode != UI_BPM)
 			{
 				currentUiMode = UI_BPM;
+				potLock(); // Lock pot to prevent parameter jumps
 				refreshOLED = true;
 				ledsDirty = true;
 				return true;
@@ -991,6 +1007,7 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_7) && currentUiMode != UI_SWING)
 			{
 				currentUiMode = UI_SWING;
+				potLock(); // Lock pot to prevent parameter jumps
 				refreshOLED = true;
 				ledsDirty = true;
 				return true;
@@ -998,6 +1015,7 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_16) && currentUiMode != UI_MASTERVOL)
 			{
 				currentUiMode = UI_MASTERVOL;
+				potLock(); // Lock pot to prevent parameter jumps
 				refreshOLED = true;
 				ledsDirty = true;
 				return true;
@@ -1016,6 +1034,7 @@ static bool handleF8ScaleRootCombos()
 	if (isButtonJustPressed(BTN_STEP_1))
 	{
 		currentUiMode = UI_PATTERN_SELECT;
+		potLock(); // Lock pot to prevent parameter jumps
 		refreshAcidBoxBankCache();
 		refreshAcidBoxSongCache();
 		refreshAcidBoxPatternCache();
@@ -1032,6 +1051,7 @@ static bool handleF8ScaleRootCombos()
 	if (isButtonJustPressed(BTN_STEP_2))
 	{
 		currentUiMode = UI_SONG_SELECT;
+		potLock(); // Lock pot to prevent parameter jumps
 		refreshAcidBoxSongCache();
 		refreshAcidBoxPatternCache();
 		suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
@@ -1044,6 +1064,7 @@ static bool handleF8ScaleRootCombos()
 	if (isButtonJustPressed(BTN_STEP_3))
 	{
 		currentUiMode = UI_BANK_SELECT;
+		potLock(); // Lock pot to prevent parameter jumps
 		refreshAcidBoxBankCache();
 		refreshAcidBoxSongCache();
 		refreshAcidBoxPatternCache();
@@ -1057,6 +1078,7 @@ static bool handleF8ScaleRootCombos()
 	if (isButtonJustPressed(BTN_STEP_9))
 	{
 		currentUiMode = UI_SCALE;
+		potLock(); // Lock pot to prevent parameter jumps
 		refreshOLED = true;
 		ledsDirty = true;
 		return true; // suppresses F8 release toggle
@@ -1066,6 +1088,7 @@ static bool handleF8ScaleRootCombos()
 	if (isButtonJustPressed(BTN_STEP_10))
 	{
 		currentUiMode = UI_ROOT;
+		potLock(); // Lock pot to prevent parameter jumps
 		refreshOLED = true;
 		ledsDirty = true;
 		return true; // suppresses F8 release toggle
@@ -1075,6 +1098,7 @@ static bool handleF8ScaleRootCombos()
 	if (isButtonJustPressed(BTN_STEP_8))
 	{
 		currentUiMode = UI_BPM;
+		potLock(); // Lock pot to prevent parameter jumps
 		refreshOLED = true;
 		ledsDirty = true;
 		return true; // suppresses F8 release toggle
@@ -1084,6 +1108,7 @@ static bool handleF8ScaleRootCombos()
 	if (isButtonJustPressed(BTN_STEP_7))
 	{
 		currentUiMode = UI_SWING;
+		potLock(); // Lock pot to prevent parameter jumps
 		refreshOLED = true;
 		ledsDirty = true;
 		return true; // suppresses F8 release toggle
@@ -1093,6 +1118,7 @@ static bool handleF8ScaleRootCombos()
 	if (isButtonJustPressed(BTN_STEP_16))
 	{
 		currentUiMode = UI_MASTERVOL;
+		potLock(); // Lock pot to prevent parameter jumps
 		refreshOLED = true;
 		ledsDirty = true;
 		return true; // suppresses F8 release toggle

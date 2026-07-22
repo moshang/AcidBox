@@ -684,10 +684,8 @@ void sequencer_toggle_synth_slide_or_accent(uint8_t step, EditType type, bool is
       // Step is on but not slide: set slide flag
       s.slide = true;
     } else {
-      // Step is already a slide step: toggle it off
-      s.active = false;
+      // Step is already a slide step: remove slide flag but keep step active
       s.slide = false;
-      s.note = 0;
     }
   } else {
     // Accent mode
@@ -702,10 +700,8 @@ void sequencer_toggle_synth_slide_or_accent(uint8_t step, EditType type, bool is
       // Step is on but not accent: set accent flag
       s.accent = true;
     } else {
-      // Step is already an accent step: toggle it off
-      s.active = false;
+      // Step is already an accent step: remove accent flag but keep step active
       s.accent = false;
-      s.note = 0;
     }
   }
 }

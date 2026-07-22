@@ -37,7 +37,14 @@ static bool tempMasterVolOverride = false;
 void potLock()
 {
     potLocked = true;
-    potLockPos = lastPotVal;  // use the last known pot value as the lock reference
+    // Use the current pot value as the lock reference to prevent jumps
+    uint32_t sum = 0;
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        sum += potValAvg[i];
+    }
+    uint16_t currentPotVal = sum >> 3;
+    potLockPos = currentPotVal;
     potUnlocked = 0;          // also clear the normal unlock timer
 }
 
