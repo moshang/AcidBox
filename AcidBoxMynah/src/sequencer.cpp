@@ -5,6 +5,7 @@
 #include "midi_config.h"
 #include "synthvoice.h"
 #include "sampler.h"
+#include "SAVE.h"
 
 // ============================================================
 // Global instances
@@ -550,6 +551,7 @@ void sequencer_write_automation_step(uint8_t lane, uint8_t value) {
     default:
       break;
   }
+  acidBoxSaveLoad.modified = true;
 }
 
 // Write the current parameter value to ALL 16 steps of the automation lane.
@@ -579,6 +581,7 @@ void sequencer_write_automation_all_steps(uint8_t lane, uint8_t value) {
     default:
       break;
   }
+  acidBoxSaveLoad.modified = true;
 }
 
 // ============================================================
@@ -589,6 +592,7 @@ void sequencer_toggle_drum_step(uint8_t step, uint16_t laneMask) {
   if (laneMask == 0) return;
   // Toggle the bit for this lane at the given step
   globalSeq.drum.steps[step] ^= laneMask;
+  acidBoxSaveLoad.modified = true;
 }
 
 // ============================================================
@@ -652,6 +656,7 @@ void sequencer_toggle_synth_step(uint8_t step, EditType type) {
       lastNote2 = s.note;
     }
   }
+  acidBoxSaveLoad.modified = true;
 }
 
 // ============================================================
@@ -704,6 +709,7 @@ void sequencer_toggle_synth_slide_or_accent(uint8_t step, EditType type, bool is
       s.accent = false;
     }
   }
+  acidBoxSaveLoad.modified = true;
 }
 
 void sequencer_set_synth_step_note(uint8_t step, uint8_t note, EditType type) {
@@ -745,6 +751,7 @@ void sequencer_set_synth_step_note(uint8_t step, uint8_t note, EditType type) {
   // Update last note tracking
   if (type == Syn1) lastNote1 = s.note;
   if (type == Syn2) lastNote2 = s.note;
+  acidBoxSaveLoad.modified = true;
 }
 
 // ============================================================

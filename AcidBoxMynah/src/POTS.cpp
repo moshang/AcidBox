@@ -6,6 +6,7 @@
 #include "sequencer.h"
 #include "SCALES.h"
 #include "UI.h"
+#include "SAVE.h"
 
 // Potentiometer state variables
 static uint8_t potAvgIndex = 0;
@@ -187,6 +188,7 @@ void handlePot(uint16_t potVal)
 		{
 			globalSeq.bpm = newBpm;
 			bpm = newBpm;
+			acidBoxSaveLoad.modified = true;
 			refreshOLED = true;
 			ledsDirty = true;
 		}
@@ -202,6 +204,7 @@ void handlePot(uint16_t potVal)
 		if (fabs(newSwing - globalSeq.swing) > 0.5f)
 		{
 			globalSeq.swing = newSwing;
+			acidBoxSaveLoad.modified = true;
 			refreshOLED = true;
 			ledsDirty = true;
 		}
@@ -236,6 +239,7 @@ void handlePot(uint16_t potVal)
 		if (fabs(newVol - masterVolume) > 0.005f)
 		{
 			masterVolume = newVol;
+			acidBoxSaveLoad.modified = true;
 			refreshOLED = true;
 			ledsDirty = true;
 		}

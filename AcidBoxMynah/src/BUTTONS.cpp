@@ -702,6 +702,7 @@ static bool handleAcidBoxSelectModes()
         if (isButtonJustPressed(BTN_STEP_1) && currentUiMode != UI_PATTERN_SELECT)
         {
             currentUiMode = UI_PATTERN_SELECT;
+            suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
             refreshAcidBoxBankCache();
             refreshAcidBoxSongCache();
             refreshAcidBoxPatternCache();
@@ -715,6 +716,7 @@ static bool handleAcidBoxSelectModes()
         if (isButtonJustPressed(BTN_STEP_2) && currentUiMode != UI_SONG_SELECT)
         {
             currentUiMode = UI_SONG_SELECT;
+            suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
             refreshAcidBoxSongCache();
             refreshAcidBoxPatternCache();
             refreshOLED = true;
@@ -724,6 +726,7 @@ static bool handleAcidBoxSelectModes()
         if (isButtonJustPressed(BTN_STEP_3) && currentUiMode != UI_BANK_SELECT)
         {
             currentUiMode = UI_BANK_SELECT;
+            suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
             refreshAcidBoxBankCache();
             refreshAcidBoxSongCache();
             refreshAcidBoxPatternCache();
@@ -948,6 +951,7 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_1) && currentUiMode != UI_PATTERN_SELECT)
 			{
 				currentUiMode = UI_PATTERN_SELECT;
+				suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
 				potLock(); // Lock pot to prevent parameter jumps
 				refreshAcidBoxBankCache();
 				refreshAcidBoxSongCache();
@@ -962,6 +966,7 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_2) && currentUiMode != UI_SONG_SELECT)
 			{
 				currentUiMode = UI_SONG_SELECT;
+				suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
 				potLock(); // Lock pot to prevent parameter jumps
 				refreshAcidBoxSongCache();
 				refreshAcidBoxPatternCache();
@@ -972,6 +977,7 @@ static bool handleF8ScaleRootCombos()
 			if (isButtonJustPressed(BTN_STEP_3) && currentUiMode != UI_BANK_SELECT)
 			{
 				currentUiMode = UI_BANK_SELECT;
+				suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
 				potLock(); // Lock pot to prevent parameter jumps
 				refreshAcidBoxBankCache();
 				refreshAcidBoxSongCache();
