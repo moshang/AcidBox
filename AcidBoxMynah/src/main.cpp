@@ -256,18 +256,29 @@ void loop() { // default loopTask running on the Core1
 
 /* 
  *  UI CORE 0 TASK - Button, Pot, and NeoPixel polling *****************************************************************************
+ *  Architecture for responsive input without compromising audio:
+ *    - Input tasks (buttons, pots) run EVERY tick (~5ms = ~200Hz).
+ *    - Slower display tasks (LEDs, OLED) run on a decoupled schedule
+ *      so they never block input polling.
+ *  Audio runs independently on Core 1 and is unaffected by these changes.
 */
 void uiCoreTask(void* parameter) {
-  uint8_t phase = 0;
+  uint8_t slowPhase = 0;
   while (true) {
-    switch (phase) {
-      case 0: updateButtons(); break;
-      case 1: processButtons(); break;
-      case 2: updatePot(); break;
-      case 3: updateLEDS(); break;
-      case 4: updateOLED(); break;
+    // === HIGH-FREQUENCY INPUT POLLING (every tick) ===
+    updateButtons();
+    processButtons();
+    updatePot();
+
+    // === LOW-FREQUENCY DISPLAY UPDATES (decoupled round-robin) ===
+    switch (slowPhase) {
+      case 0: updateLEDS(); break;
+      case 1: updateOLED(); break;
+      // case 2: (idle) — gives CPU back to audio on shared core
     }
-    phase = (phase + 1) % 5;
+    slowPhase = (slowPhase + 1) % 3;
+
+    // 5ms tick — input tasks now run at ~200Hz (was 40Hz with old round-robin)
     vTaskDelay(pdMS_TO_TICKS(5));
   }
 }

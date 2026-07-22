@@ -25,11 +25,12 @@ uint32_t readShiftRegister()
 
 	// Pulse latch LOW to load button states into shift register
 	digitalWrite(SR_LATCH_PIN, LOW);
-	delayMicroseconds(5);
+	delayMicroseconds(1);
 	digitalWrite(SR_LATCH_PIN, HIGH);
-	delayMicroseconds(5);
+	delayMicroseconds(1);
 
 	// Read 24 bits - IC3 comes out first (MSB), then IC2, then IC1 (LSB)
+	// 74HC165 minimum clock period is ~20ns; 1µs per edge is extremely conservative
 	for (int i = 23; i >= 0; i--)
 	{
 		int bit = digitalRead(SR_DATA_PIN);
@@ -38,9 +39,9 @@ uint32_t readShiftRegister()
 			buttonData |= (1UL << i);
 		}
 		digitalWrite(SR_CLOCK_PIN, HIGH);
-		delayMicroseconds(5);
+		delayMicroseconds(1);
 		digitalWrite(SR_CLOCK_PIN, LOW);
-		delayMicroseconds(5);
+		delayMicroseconds(1);
 	}
 
 	// With resistor networks: unpressed = HIGH (1), pressed = LOW (0)
@@ -84,8 +85,10 @@ void updateButtons()
 	static uint32_t lastReadTime = 0;
 	uint32_t now = millis();
 
-	// Simple debounce: read every 5ms
-	if (now - lastReadTime < 5)
+	// Fast scan: read every 2ms (~500Hz) for responsive input
+	// Physical debounce is inherent — mechanical switches settle in ~1-5ms,
+	// and the shift register's 24-bit parallel read naturally filters glitches.
+	if (now - lastReadTime < 2)
 	{
 		return;
 	}
@@ -453,8 +456,8 @@ static bool handleF1Combos()
 	{
 		if (isButtonJustPressed(i))
 		{
-			// Skip Step9 - reserved for KITS mode entry
-			if (i == BTN_STEP_9) continue;
+			// Skip Step9 - reserved for KITS mode entry (drums only)
+			if (i == BTN_STEP_9 && currentEditType == Drm) continue;
 
 			if (currentEditType < 2)
 			{

@@ -24,6 +24,12 @@ static uint16_t potLockPos = 0;          // pot position at lock time
 static int8_t lastEditedStep = -1;     // which step we last edited with the pot (-1 = none)
 static uint8_t lastEditNote = 0;       // last note we set for hysteresis
 
+// Temp master volume override (F8+Pot shortcut)
+// When F8 is held and the pot is turned, we temporarily enter UI_MASTERVOL mode.
+// When the pot settles (potUnlocked reaches 0) or F8 is released, we restore the previous mode.
+static UiMode savedUiMode = UI_NORMAL;
+static bool tempMasterVolOverride = false;
+
 // ---------- LOCK POT ----------
 // Lock the pot so it ignores small movements after a mode change.
 // The pot will only respond again once the user moves it past POT_LOCK_THRESHOLD
@@ -78,11 +84,61 @@ void updatePot()
 	{
 		potUnlocked--;
 	}
+
+	// ---- Temp master volume override: restore previous mode when pot settles ----
+	// When the pot has been still for long enough (potUnlocked reaches 0) or F8 is released,
+	// restore the saved mode and lock the pot to prevent jumping.
+	if (tempMasterVolOverride)
+	{
+		bool shouldExit = false;
+		if (potUnlocked == 0)
+		{
+			// Pot has settled — restore previous mode
+			shouldExit = true;
+		}
+		if (!isButtonPressed(BTN_F8))
+		{
+			// F8 was released — restore previous mode immediately
+			shouldExit = true;
+		}
+		if (shouldExit)
+		{
+			tempMasterVolOverride = false;
+			currentUiMode = savedUiMode;
+			potLock();
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+	}
 }
 
 // ---------- HANDLE POT VALUE ----------
 void handlePot(uint16_t potVal)
 {
+	// ---- F8+Pot shortcut: adjust master volume while F8 is held ----
+	// Temporarily enter UI_MASTERVOL mode. When the pot settles (potUnlocked reaches 0)
+	// or F8 is released, updatePot() will restore the previous mode.
+	if (isButtonPressed(BTN_F8) && currentUiMode == UI_NORMAL)
+	{
+		if (!tempMasterVolOverride)
+		{
+			savedUiMode = currentUiMode;
+			currentUiMode = UI_MASTERVOL;
+			tempMasterVolOverride = true;
+		}
+		// Handle master volume
+		float newVol = (float)potVal / 4095.0f; // 0.0..1.0
+		if (newVol > 1.0f) newVol = 1.0f;
+		if (newVol < 0.0f) newVol = 0.0f;
+		if (fabs(newVol - masterVolume) > 0.005f)
+		{
+			masterVolume = newVol;
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
 	// ---- SCALE mode: pot selects the scale ----
 	if (currentUiMode == UI_SCALE)
 	{
