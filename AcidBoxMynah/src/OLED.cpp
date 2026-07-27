@@ -218,6 +218,38 @@ void updateOLED()
         return;
     }
 
+    // ---- UI_PARTGEN mode: show "PART" on line 1, "CREATE [F5]" on line 2 ----
+    if (currentUiMode == UI_PARTGEN)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("PART");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        u8g2.print("CREATE [F5]");
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
+    // ---- UI_PATTERNGEN mode: show "PATTERN" on line 1, "CREATE [F6]" on line 2 ----
+    if (currentUiMode == UI_PATTERNGEN)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("PATTERN");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        u8g2.print("CREATE [F6]");
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
     // ---- Normal mode: original display ----
     u8g2.setFont(u8g2_font_helvB14_tf);
     u8g2.setCursor(0, 25);

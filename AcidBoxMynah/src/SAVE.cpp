@@ -5,6 +5,7 @@
 #include "general.h"
 #include "sampler.h"
 #include "sequencer.h"
+#include "SCALES.h"
 
 // ========================================
 // ACIDBOX SAVE/LOAD SYSTEM IMPLEMENTATION
@@ -241,6 +242,10 @@ bool saveAcidBoxPattern(uint8_t bankNum, uint8_t songNum, uint8_t patternNum) {
         pf.drumKitName[0] = '\0';
     }
 
+    // Save scale and root note (version 3+)
+    pf.scaleIndex = scaleIndex;
+    pf.rootNote   = rootNote;
+
     // Write to file
     getAcidBoxPatternPath(path, bankNum, songNum, patternNum);
     File file = SD_MMC.open(path, FILE_WRITE);
@@ -257,8 +262,9 @@ bool saveAcidBoxPattern(uint8_t bankNum, uint8_t songNum, uint8_t patternNum) {
         return false;
     }
 
-    Serial.printf("✓ Saved pattern B%02d/S%02d/P%02d (%d bytes, BPM=%.0f, Swing=%.0f%%)\n",
-                  bankNum + 1, songNum + 1, patternNum + 1, bytesWritten, pf.bpm, pf.swing);
+    Serial.printf("✓ Saved pattern B%02d/S%02d/P%02d (%d bytes, BPM=%.0f, Swing=%.0f%%, Scale=%d, Root=%d)\n",
+                  bankNum + 1, songNum + 1, patternNum + 1, bytesWritten, pf.bpm, pf.swing,
+                  pf.scaleIndex, pf.rootNote);
 
     acidBoxSaveLoad.modified = false;
     return true;
@@ -321,9 +327,19 @@ bool loadAcidBoxPattern(uint8_t bankNum, uint8_t songNum, uint8_t patternNum) {
 
     // Update the global bpm variable used by the jukebox
     bpm = pf.bpm;
+    Delay.SetBPM(bpm);
 
-    Serial.printf("✓ Loaded pattern B%02d/S%02d/P%02d (BPM=%.0f, Swing=%.0f%%)\n",
-                  bankNum + 1, songNum + 1, patternNum + 1, pf.bpm, pf.swing);
+    // Restore scale and root note (version 3+)
+    if (pf.version >= 3) {
+        setScale(pf.scaleIndex);     // restores scalePointer, scaleSize, scaleName
+        rootNote = pf.rootNote;
+        syncSequencerScale();        // rebuilds sequencer's currentScale bitmask
+        Serial.printf("  → Restored scale=%d, root=%d\n", pf.scaleIndex, pf.rootNote);
+    }
+
+    Serial.printf("✓ Loaded pattern B%02d/S%02d/P%02d (BPM=%.0f, Swing=%.0f%%, Scale=%d, Root=%d)\n",
+                  bankNum + 1, songNum + 1, patternNum + 1, pf.bpm, pf.swing,
+                  pf.scaleIndex, pf.rootNote);
 
     acidBoxSaveLoad.currentBank = bankNum;
     acidBoxSaveLoad.currentSong = songNum;

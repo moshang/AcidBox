@@ -23,7 +23,7 @@
 // ========================================
 
 #define ACIDBOX_SAVE_MAGIC   0x41424F58  // 'ABOX'
-#define ACIDBOX_SAVE_VERSION 2
+#define ACIDBOX_SAVE_VERSION 3
 
 // Binary file format for a single pattern slot
 struct __attribute__((packed)) AcidBoxPatternFile {
@@ -47,6 +47,10 @@ struct __attribute__((packed)) AcidBoxPatternFile {
     // Drum kit selection (since version 2)
     uint8_t drumKitNumber;      // program number of the drum kit (0 = unset/default)
     char    drumKitName[32];    // folder name of the drum kit, null-terminated
+
+    // Scale and root note (since version 3)
+    uint8_t scaleIndex;         // active scale index (0..NUM_SCALES)
+    uint8_t rootNote;           // MIDI root note (default 60 = C4)
 };
 
 // Save/Load UI state tracking

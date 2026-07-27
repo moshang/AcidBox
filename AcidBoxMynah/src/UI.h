@@ -69,7 +69,9 @@ enum UiMode {
   UI_KITS,        // F1+Step9 (Drums mode): browse and load drum kits from SD
   UI_PATTERN_SELECT,  // F8+Step9: pattern browse/select mode
   UI_SONG_SELECT,     // F8+Step10: song browse/select mode
-  UI_BANK_SELECT      // F8+Step11: bank browse/select mode
+  UI_BANK_SELECT,         // F8+Step11: bank browse/select mode
+  UI_PARTGEN,             // F5: press once for "PART" display, press again to generate current part
+  UI_PATTERNGEN           // F6: press once for "PATTERN" display, press again to generate all parts
 };
 extern UiMode currentUiMode;
 

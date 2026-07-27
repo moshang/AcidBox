@@ -188,6 +188,7 @@ void handlePot(uint16_t potVal)
 		{
 			globalSeq.bpm = newBpm;
 			bpm = newBpm;
+			Delay.SetBPM(newBpm);
 			acidBoxSaveLoad.modified = true;
 			refreshOLED = true;
 			ledsDirty = true;
@@ -195,12 +196,12 @@ void handlePot(uint16_t potVal)
 		return;
 	}
 
-	// ---- SWING mode: pot sets swing (50..75) ----
+	// ---- SWING mode: pot sets swing (0..100) ----
 	if (currentUiMode == UI_SWING)
 	{
-		float newSwing = 50.0f + (float)potVal / 4095.0f * 25.0f; // 50..75
-		if (newSwing > 75.0f) newSwing = 75.0f;
-		if (newSwing < 50.0f) newSwing = 50.0f;
+		float newSwing = (float)potVal / 4095.0f * 100.0f; // 0..100
+		if (newSwing > 100.0f) newSwing = 100.0f;
+		if (newSwing < 0.0f) newSwing = 0.0f;
 		if (fabs(newSwing - globalSeq.swing) > 0.5f)
 		{
 			globalSeq.swing = newSwing;

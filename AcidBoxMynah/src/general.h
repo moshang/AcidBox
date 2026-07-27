@@ -7,6 +7,7 @@
 #include "sequencer.h"
 #include "UI.h"
 #include "SAVE.h"
+#include "fx_delay.h"
 #include <NeoPixelBusLg.h>
 
 // Forward declare the classes so we can use pointers/references
@@ -36,6 +37,9 @@ void MidiInit();
 void buildTables();
 void init_midi();
 void run_tick();
+void jukebox_reset_parameters();
+void jukebox_generate_part(EditType part);
+void jukebox_generate_all();
 uint16_t myRandomAddEntropy(uint16_t entropy);
 void midi_read();
 void midi_send_noteon(uint8_t chan, uint8_t note, uint8_t vol);

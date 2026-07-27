@@ -7,11 +7,13 @@
  * Author: Marcel Licence
  */
 
+#ifndef FX_DELAY_H
+#define FX_DELAY_H
 
 class FxDelay {
 	public:
 		FxDelay() {}
-   
+    
 		// max delay can be changed but changes also the PSRAM consumption
 		void Init( void ){
 #ifdef NO_PSRAM
@@ -52,7 +54,8 @@ class FxDelay {
 				delayLine_l[i] = 0;
 				delayLine_r[i] = 0;
 			}
-			delayLen = 60.0f / bpm * 1.5f * (float)min(SAMPLE_RATE,MAX_DELAY);
+			delayTimeBeats = 1.5f; // dotted quarter note
+			recalcDelayLen(currentBpm);
 			delayToMix = 1.0f;
 			delayFeedback = 0.2f;
 		};
@@ -96,13 +99,30 @@ class FxDelay {
 		};
 
 		inline void SetLength( float value ){
-			delayLen = (uint32_t)(((float)MAX_DELAY - 1.0f) * value);
+			// Convert the 0-1 normalized value to a beat count (number of quarter notes)
+			// This makes the delay tempo-synced: when BPM changes, the beat count stays
+			// the same and the sample count is recalculated.
+			delayTimeBeats = value * (float)MAX_DELAY * currentBpm / (60.0f * (float)SAMPLE_RATE);
+			recalcDelayLen(currentBpm);
 #ifdef DEBUG_FX
 			DEBF("delay length: %0.3fms\n", delayLen * (1000.0f / ((float)SAMPLE_RATE)));
 #endif
 		};
 
+		inline void SetBPM( float bpm ){
+			currentBpm = bpm;
+			recalcDelayLen(bpm);
+		};
+
 	private:
+		// Recalculate the delay sample count from the stored beat count and current BPM
+		inline void recalcDelayLen( float bpm ){
+			float len = delayTimeBeats * 60.0f / bpm * (float)SAMPLE_RATE;
+			if( len >= (float)MAX_DELAY ) len = (float)(MAX_DELAY - 1);
+			if( len < 1.0f ) len = 1.0f;
+			delayLen = (uint32_t)len;
+		};
+
 		//  module variables
 		float *delayLine_l;
 		float *delayLine_r;
@@ -113,4 +133,10 @@ class FxDelay {
 		uint32_t delayIn = 0;
 		uint32_t delayOut = 0;
 
+		// Tempo sync members
+		float delayTimeBeats = 1.5f;  // delay length in quarter notes (default: dotted quarter)
+		float currentBpm = 130.0f;     // current BPM for tempo-synced delay calculation
+
 };
+
+#endif // FX_DELAY_H

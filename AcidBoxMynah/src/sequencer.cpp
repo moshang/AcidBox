@@ -11,7 +11,7 @@
 // Global instances
 // ============================================================
 SequencerState globalSeq;
-PlaybackMode    currentMode = MODE_JUKEBOX;
+PlaybackMode    currentMode = MODE_EDIT;
 uint16_t        currentScale = SCALE_CHROMATIC;  // default: all notes allowed
 
 // ============================================================
@@ -94,11 +94,17 @@ void sequencer_init() {
 
   // Set defaults
   globalSeq.bpm       = 130.0f;
-  globalSeq.swing     = 60.0f;
+  globalSeq.swing     = 0.0f;
   globalSeq.currentStep = 0;
   globalSeq.isPlaying = false;
 
-  currentMode = MODE_JUKEBOX;
+  // Default 4-on-the-floor kick drum pattern on power-on
+  globalSeq.drum.steps[0]  |= (1 << 0);  // BD on step 1
+  globalSeq.drum.steps[4]  |= (1 << 0);  // BD on step 5
+  globalSeq.drum.steps[8]  |= (1 << 0);  // BD on step 9
+  globalSeq.drum.steps[12] |= (1 << 0);  // BD on step 13
+
+  currentMode = MODE_EDIT;
   lastTickUs = 0;
   nextTickIntervalUs = 0;
   lastNote1 = 0;
@@ -125,6 +131,10 @@ void setMode(PlaybackMode newMode) {
     nextTickIntervalUs = calc_16th_interval_us(globalSeq.bpm);
   } else {
     // Transition to JUKEBOX mode: re-enable jukebox generation
+    // Reset all parameters to jukebox defaults so the jukebox algorithm
+    // regains full control of all synth/drum parameters that may have
+    // been changed during EDIT mode.
+    jukebox_reset_parameters();
     // The jukebox will repopulate globalSeq on the next run_tick()
     globalSeq.currentStep = 0;
     lastTickUs = micros();
@@ -373,14 +383,14 @@ uint32_t sequencer_tick() {
   uint32_t baseInterval = calc_16th_interval_us(globalSeq.bpm);
 
   // Swing: shift even steps (0-indexed: 1, 3, 5, 7, 9, 11, 13, 15) based on ratio
-  // Swing range: 50.0 (straight) → 75.0 (maximum swing)
-  // At 50%: no shift.
-  // At 75%: offbeat 16ths are delayed by ~50% of the base interval.
+  // Swing range: 0.0 (straight) → 100.0 (maximum swing)
+  // At 0%: no shift.
+  // At 100%: offbeat 16ths are delayed by ~50% of the base interval.
   // Interval pattern: [T+d, T-d, T+d, T-d, ...]
-  //   where d = baseInterval * (swing - 50) / 50
+  //   where d = baseInterval * swing / 200
   //   Even→odd step (this step = even index): interval = T + d
   //   Odd→even step (this step = odd index):  interval = T - d
-  float swingRatio = (globalSeq.swing - 50.0f) / 50.0f;
+  float swingRatio = globalSeq.swing / 200.0f;
   if (globalSeq.currentStep & 1) {
     // This is an odd-indexed step. Since we advance before playing,
     // currentStep is the step we just advanced to. If currentStep is
@@ -475,7 +485,7 @@ void sequencer_service() {
       
       // Recalculate nextTickIntervalUs to match the skipped step's swing timing
       uint32_t baseInterval = calc_16th_interval_us(globalSeq.bpm);
-      float swingRatio = (globalSeq.swing - 50.0f) / 50.0f;
+      float swingRatio = globalSeq.swing / 200.0f;
       if (globalSeq.currentStep & 1) {
         nextTickIntervalUs = baseInterval - (uint32_t)((float)baseInterval * swingRatio);
       } else {
@@ -522,6 +532,29 @@ void sequencer_load_drum_pattern(DrumPattern* dst,
     if (crash[i] > 0)  mask |= (1 << 8);
     dst->steps[i] = mask;
   }
+}
+
+// ============================================================
+// Clear all pattern and automation data for a given part
+// ============================================================
+void sequencer_clear_part(EditType part) {
+  switch (part) {
+    case Syn1:
+      memset(&globalSeq.synth1, 0, sizeof(SynthPattern));
+      memset(&globalSeq.autoSynth1, 0, sizeof(SynthAutomation));
+      break;
+    case Syn2:
+      memset(&globalSeq.synth2, 0, sizeof(SynthPattern));
+      memset(&globalSeq.autoSynth2, 0, sizeof(SynthAutomation));
+      break;
+    case Drm:
+      memset(&globalSeq.drum, 0, sizeof(DrumPattern));
+      memset(&globalSeq.autoDrum, 0, sizeof(DrumAutomation));
+      break;
+    default:
+      break;
+  }
+  acidBoxSaveLoad.modified = true;
 }
 
 // ============================================================

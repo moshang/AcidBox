@@ -169,6 +169,7 @@ static void nudgeParam(int8_t direction)
         if (newBpm > 300.0f) newBpm = 300.0f;
         globalSeq.bpm = newBpm;
         bpm = newBpm;
+        Delay.SetBPM(newBpm);
         refreshOLED = true;
         ledsDirty = true;
     }
@@ -176,8 +177,8 @@ static void nudgeParam(int8_t direction)
     {
         // Nudge swing by ±1
         float newSwing = globalSeq.swing + (float)direction;
-        if (newSwing < 50.0f) newSwing = 50.0f;
-        if (newSwing > 75.0f) newSwing = 75.0f;
+        if (newSwing < 0.0f) newSwing = 0.0f;
+        if (newSwing > 100.0f) newSwing = 100.0f;
         globalSeq.swing = newSwing;
         refreshOLED = true;
         ledsDirty = true;
@@ -211,6 +212,8 @@ static bool handleF1Combos();
 static bool handleF4DrumLaneCombos();
 static bool handleKitStepCombos();
 static bool handleF8ScaleRootCombos();
+static bool handleF5PartGen();
+static bool handleF6PatternGen();
 static bool handleAcidBoxSelectModes();
 static void handleFunctionButtons();
 
@@ -230,6 +233,18 @@ void processButtons()
 		return;
 	}
 
+	// F5 part generation (current part only)
+	if (handleF5PartGen())
+	{
+		return;
+	}
+
+	// F6 full pattern generation (all parts)
+	if (handleF6PatternGen())
+	{
+		return;
+	}
+
 	// F4+STEP drum lane switching (sequencer mode, drums edit type)
 	if (handleF4DrumLaneCombos())
 	{
@@ -242,7 +257,7 @@ void processButtons()
 		return;
 	}
 
-	// Kit browser Step9 load (when in UI_KITS mode)
+	// Kit browser F4 load (when in UI_KITS mode)
 	if (handleKitStepCombos())
 	{
 		return;
@@ -437,17 +452,17 @@ static bool handleF1Combos()
 		return false; // don't block other handlers
 	}
 
-	// ---- F1+Step9 (Drums mode only): enter KITS sub-mode ----
+	// ---- F1+F4 (Drums mode only): enter KITS sub-mode ----
 	// Kits are scanned at startup — no SD access here, instant entry.
-	// Loading the kit happens on standalone Step9 press (see handleKitStepCombos).
-	if (currentEditType == Drm && isButtonJustPressed(BTN_STEP_9) && currentUiMode != UI_KITS)
+	// Loading the kit happens on standalone F4 press (see handleKitStepCombos).
+	if (currentEditType == Drm && isButtonJustPressed(BTN_F4) && currentUiMode != UI_KITS)
 	{
 		// Enter KITS browser mode
 		currentUiMode = UI_KITS;
 		potLock();
 		refreshOLED = true;
 		ledsDirty = true;
-		return true; // Mark as consumed so no other handlers see BTN_STEP_9
+		return true; // Mark as consumed so no other handlers see BTN_F4
 	}
 
 	// F1+STEP_1 through F1+STEP_5: set synth edit mode
@@ -456,9 +471,6 @@ static bool handleF1Combos()
 	{
 		if (isButtonJustPressed(i))
 		{
-			// Skip Step9 - reserved for KITS mode entry (drums only)
-			if (i == BTN_STEP_9 && currentEditType == Drm) continue;
-
 			if (currentEditType < 2)
 			{
 				// Syn1 or Syn2: set synth edit mode
@@ -545,6 +557,105 @@ static void handleFunctionButtons()
 	}
 }
 
+// ==================== F5 PART GENERATION (current part only) ====================
+// Handles F5 press: two-state toggle.
+// First press: enter UI_PARTGEN mode, show "PART" on OLED.
+// Second press: clear current part data, generate new pattern via jukebox,
+//               and bridge it into globalSeq. Other parts are left untouched.
+static bool handleF5PartGen()
+{
+    // F5 must be pressed alone (no other function buttons)
+    if (isButtonPressed(BTN_F1) || isButtonPressed(BTN_F2) ||
+        isButtonPressed(BTN_F3) || isButtonPressed(BTN_F4) ||
+        isButtonPressed(BTN_F6) || isButtonPressed(BTN_F7) ||
+        isButtonPressed(BTN_F8))
+        return false;
+
+    if (isButtonJustPressed(BTN_F5))
+    {
+        if (currentUiMode == UI_PARTGEN)
+        {
+            // F5 pressed again — generate the current part only
+            EditType part = currentEditType;
+
+            // 1. Clear all data for the current part
+            sequencer_clear_part(part);
+
+            // 2. Generate new pattern using jukebox engine
+            //    (also bridges the pattern into globalSeq)
+#ifdef JUKEBOX
+            jukebox_generate_part(part);
+#endif
+
+            // Exit PARTGEN mode
+            currentUiMode = UI_NORMAL;
+            refreshOLED = true;
+            ledsDirty = true;
+
+            Serial.printf("F5: Generated %s pattern\n", editTypeNames[currentEditType]);
+        }
+        else
+        {
+            // First press: enter PARTGEN mode
+            currentUiMode = UI_PARTGEN;
+            refreshOLED = true;
+            ledsDirty = true;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+// ==================== F6 FULL PATTERN GENERATION (all parts) ====================
+// Handles F6 press: two-state toggle.
+// First press: enter UI_PATTERNGEN mode, show "PATTERN" on OLED.
+// Second press: clear all parts, generate full pattern via jukebox,
+//               and bridge into globalSeq.
+static bool handleF6PatternGen()
+{
+    // F6 must be pressed alone (no other function buttons)
+    if (isButtonPressed(BTN_F1) || isButtonPressed(BTN_F2) ||
+        isButtonPressed(BTN_F3) || isButtonPressed(BTN_F4) ||
+        isButtonPressed(BTN_F5) || isButtonPressed(BTN_F7) ||
+        isButtonPressed(BTN_F8))
+        return false;
+
+    if (isButtonJustPressed(BTN_F6))
+    {
+        if (currentUiMode == UI_PATTERNGEN)
+        {
+            // F6 pressed again — generate all parts
+            // 1. Clear all parts
+            sequencer_clear_part(Syn1);
+            sequencer_clear_part(Syn2);
+            sequencer_clear_part(Drm);
+
+            // 2. Generate full pattern using jukebox engine
+#ifdef JUKEBOX
+            jukebox_generate_all();
+#endif
+
+            // Exit PATTERNGEN mode
+            currentUiMode = UI_NORMAL;
+            refreshOLED = true;
+            ledsDirty = true;
+
+            Serial.printf("F6: Generated full pattern\n");
+        }
+        else
+        {
+            // First press: enter PATTERNGEN mode
+            currentUiMode = UI_PATTERNGEN;
+            refreshOLED = true;
+            ledsDirty = true;
+        }
+        return true;
+    }
+
+    return false;
+}
+
 // ==================== F4 DRUM LANE SWITCHING ====================
 // Handles F4+STEP_1..STEP_16: switch drum lane when in sequencer mode (MODE_EDIT)
 // and drums (Drm) edit type is selected.
@@ -557,6 +668,11 @@ static bool handleF4DrumLaneCombos()
 
 	// Only works in sequencer (EDIT) mode when drums are the current edit type
 	if (currentMode != MODE_EDIT || currentEditType != Drm)
+		return false;
+
+	// Block drum lane switching while in KITS browser mode
+	// Return false so the F4 press can propagate through to handleKitStepCombos()
+	if (currentUiMode == UI_KITS)
 		return false;
 
 	// F4+STEP_1 through F4+STEP_16: switch drum lane
@@ -573,8 +689,9 @@ static bool handleF4DrumLaneCombos()
 	return false;
 }
 
-// ==================== KIT BROWSER (UI_KITS) STEP HANDLER ====================
-// When in UI_KITS mode, handles standalone Step9 press to load the selected kit.
+// ==================== KIT BROWSER (UI_KITS) F4 HANDLER ====================
+// When in UI_KITS mode, handles a standalone F4 press (single click) to load
+// the selected kit and exit KITS mode.
 static bool handleKitStepCombos()
 {
 	if (currentUiMode != UI_KITS)
@@ -584,22 +701,15 @@ static bool handleKitStepCombos()
 	if (isButtonPressed(BTN_F1))
 		return false;
 
-	// Step9 pressed alone (no F1): load the selected kit
-	for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+	// F4 pressed alone (no F1): load the selected kit and exit KITS mode
+	if (isButtonJustPressed(BTN_F4))
 	{
-		if (isButtonJustPressed(i))
-		{
-			uint8_t step = i - BTN_STEP_1;
-			if (step == 8) // Step9 = index 8
-			{
-				Drums.LoadKitByIndex(Drums.GetKitIndex());
-				currentUiMode = UI_NORMAL;
-				potLock();
-				refreshOLED = true;
-				ledsDirty = true;
-				return true;
-			}
-		}
+		Drums.LoadKitByIndex(Drums.GetKitIndex());
+		currentUiMode = UI_NORMAL;
+		potLock();
+		refreshOLED = true;
+		ledsDirty = true;
+		return true;
 	}
 
 	return false;
@@ -737,6 +847,7 @@ static bool handleAcidBoxSelectModes()
         if (isButtonJustPressed(BTN_STEP_8))
         {
             currentUiMode = UI_BPM;
+            suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
             refreshOLED = true;
             ledsDirty = true;
             return true;
@@ -744,6 +855,7 @@ static bool handleAcidBoxSelectModes()
         if (isButtonJustPressed(BTN_STEP_7))
         {
             currentUiMode = UI_SWING;
+            suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
             refreshOLED = true;
             ledsDirty = true;
             return true;
@@ -751,6 +863,7 @@ static bool handleAcidBoxSelectModes()
         if (isButtonJustPressed(BTN_STEP_16))
         {
             currentUiMode = UI_MASTERVOL;
+            suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
             refreshOLED = true;
             ledsDirty = true;
             return true;
@@ -910,6 +1023,8 @@ static bool handleF8ScaleRootCombos()
 
 		// F2/F3/F4 release (single click): switch edit type → exit
 		// BUT: skip if the release is suppressed by a nudge combo
+		// ALSO: skip F4 release in UI_KITS mode — the F4 release that follows
+		// the F1+F4 entry combo should not kick the user out of KITS mode.
 		if (isButtonJustReleased(BTN_F2) && !suppressF2Release)
 		{
 			currentUiMode = UI_NORMAL;
@@ -926,7 +1041,7 @@ static bool handleF8ScaleRootCombos()
 			ledsDirty = true;
 			return false; // let processButtons continue to handleFunctionButtons
 		}
-		if (isButtonJustReleased(BTN_F4))
+		if (isButtonJustReleased(BTN_F4) && currentUiMode != UI_KITS)
 		{
 			currentUiMode = UI_NORMAL;
 			potLock(); // Lock pot to prevent parameter jumps
@@ -939,9 +1054,18 @@ static bool handleF8ScaleRootCombos()
 	// For UI_PATTERN_SELECT, UI_SONG_SELECT, and UI_BANK_SELECT modes, the
 	// F8 release is handled by handleAcidBoxSelectModes(). If it returned false,
 	// we need to let it through to the sequencer toggle in processButtons().
+	// For UI_BPM, UI_SWING, and UI_MASTERVOL modes, the first F8 release after
+	// entering the mode is suppressed (it's the release that follows the F8+Step
+	// combo that entered the mode). Subsequent F8 releases toggle the sequencer.
 	if (isButtonJustReleased(BTN_F8) &&
-	    (currentUiMode == UI_PATTERN_SELECT || currentUiMode == UI_SONG_SELECT || currentUiMode == UI_BANK_SELECT))
+	    (currentUiMode == UI_PATTERN_SELECT || currentUiMode == UI_SONG_SELECT || currentUiMode == UI_BANK_SELECT ||
+	     currentUiMode == UI_BPM || currentUiMode == UI_SWING || currentUiMode == UI_MASTERVOL))
 	{
+		if (suppressF8ReleaseInSelectMode)
+		{
+			suppressF8ReleaseInSelectMode = false; // consume the suppression
+			return true; // block this release
+		}
 		return false;
 	}
 
@@ -1006,6 +1130,7 @@ static bool handleF8ScaleRootCombos()
 			{
 				currentUiMode = UI_BPM;
 				potLock(); // Lock pot to prevent parameter jumps
+				suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
 				refreshOLED = true;
 				ledsDirty = true;
 				return true;
@@ -1014,6 +1139,7 @@ static bool handleF8ScaleRootCombos()
 			{
 				currentUiMode = UI_SWING;
 				potLock(); // Lock pot to prevent parameter jumps
+				suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
 				refreshOLED = true;
 				ledsDirty = true;
 				return true;
@@ -1022,6 +1148,7 @@ static bool handleF8ScaleRootCombos()
 			{
 				currentUiMode = UI_MASTERVOL;
 				potLock(); // Lock pot to prevent parameter jumps
+				suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
 				refreshOLED = true;
 				ledsDirty = true;
 				return true;
@@ -1105,6 +1232,7 @@ static bool handleF8ScaleRootCombos()
 	{
 		currentUiMode = UI_BPM;
 		potLock(); // Lock pot to prevent parameter jumps
+		suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
 		refreshOLED = true;
 		ledsDirty = true;
 		return true; // suppresses F8 release toggle
@@ -1115,6 +1243,7 @@ static bool handleF8ScaleRootCombos()
 	{
 		currentUiMode = UI_SWING;
 		potLock(); // Lock pot to prevent parameter jumps
+		suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
 		refreshOLED = true;
 		ledsDirty = true;
 		return true; // suppresses F8 release toggle
@@ -1125,6 +1254,7 @@ static bool handleF8ScaleRootCombos()
 	{
 		currentUiMode = UI_MASTERVOL;
 		potLock(); // Lock pot to prevent parameter jumps
+		suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
 		refreshOLED = true;
 		ledsDirty = true;
 		return true; // suppresses F8 release toggle

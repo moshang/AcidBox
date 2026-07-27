@@ -77,7 +77,7 @@ struct SequencerState {
   DrumAutomation  autoDrum;     // automation lanes for drums
 
   float        bpm;          // beats per minute (default 120.0)
-  float        swing;        // swing percentage (50.0 = straight, 50..75)
+  float        swing;        // swing percentage (0.0 = straight, 0..100)
   uint8_t      currentStep;  // current step index [0..15]
   bool         isPlaying;    // whether the sequencer is actively playing
 };
@@ -165,5 +165,8 @@ void sequencer_write_automation_step(uint8_t lane, uint8_t value);
 // Write a parameter value to all 16 steps of the automation lane.
 // Also enables the lane. Used when pot is turned without F1 held.
 void sequencer_write_automation_all_steps(uint8_t lane, uint8_t value);
+
+// Clear all pattern and automation data for a given part (Syn1, Syn2, or Drm)
+void sequencer_clear_part(EditType part);
 
 #endif // SEQUENCER_H

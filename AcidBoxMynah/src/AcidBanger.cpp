@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include "general.h"
 #include "sampler.h"
+#include "SCALES.h"
 #ifdef JUKEBOX
 // This is The "Endless Acid Banger"
 //
@@ -84,7 +85,6 @@
   #define VOL_SYNTH1     100
   #define VOL_SYNTH2     100
   #define VOL_DRUMS     100
-
 #endif
 
 uint8_t current_drumkit = (DEFAULT_DRUMKIT*12); // offset for drum note numbers (instruments are groupped by 12)
@@ -953,6 +953,7 @@ static unsigned long midi_tick_ms = tick_coef / bpm;
 inline void set_bpm(float newBpm) {
   bpm = newBpm;
   midi_tick_ms = tick_coef / newBpm;
+  Delay.SetBPM(newBpm);
 }
 
 static void decide_on_break() {
@@ -1038,10 +1039,11 @@ static void decide_on_break() {
 #endif
 }
 
-static void do_midi_start() {
-  midi_playing = 1;
-  midi_tick = MIDI_TICKS_PER_16TH - 1;
-  midi_step = -1;
+// Reset all jukebox-controlled parameters to their default values.
+// Called when switching to JUKEBOX mode so the jukebox algorithm
+// regains full control of all synth/drum parameters.
+// (Identical to the CC initializations in do_midi_start().)
+void jukebox_reset_parameters() {
   send_midi_control(SYNTH1_MIDI_CHAN, 10, 10);
   send_midi_control(SYNTH2_MIDI_CHAN, 10, 117);
   send_midi_control(SYNTH1_MIDI_CHAN, 74, 64);
@@ -1073,6 +1075,13 @@ static void do_midi_start() {
   send_midi_control(SYNTH1_MIDI_CHAN, 94, 3);  // post-overdrive
   send_midi_control(SYNTH2_MIDI_CHAN, 94, 2);  // post-overdrive
   send_midi_control(SYNTH1_MIDI_CHAN, 93, 10); // compressor ratio
+}
+
+static void do_midi_start() {
+  midi_playing = 1;
+  midi_tick = MIDI_TICKS_PER_16TH - 1;
+  midi_step = -1;
+  jukebox_reset_parameters();
   send_midi_start();
 }
 
@@ -1363,5 +1372,154 @@ void run_tick() {
   myRandomAddEntropy(analogRead(0));
   }
 */
+
+// ============================================================
+// Public wrappers for F5 part generation
+// ============================================================
+// These re-use the jukebox's internal generation engine to create
+// patterns for a specific part (Syn1, Syn2, or Drm).
+// Synth2 notes are generated one octave above Synth1.
+// All notes are quantized to the current scale.
+// ============================================================
+extern uint16_t currentScale;
+
+// Generate a note set using scale degrees from the active scale.
+// Populates m->note_set with MIDI notes that are guaranteed to be
+// in the user's selected scale and root.
+static void generate_scale_note_set(Memory* m) {
+  // Pick a random octave offset (0..2) so notes span a few octaves
+  uint8_t octaveBase = myRandom(3); // 0, 1, or 2 octaves above root
+  // Pick a random number of notes (4..8)
+  uint8_t numNotes = 4 + myRandom(5);
+  if (numNotes > MaxNoteSet) numNotes = MaxNoteSet;
+  m->num_notes_in_set = numNotes;
+
+  for (int i = 0; i < numNotes; i++) {
+    // Pick a random scale degree (0..scaleSize-1)
+    int degree = myRandom(scaleSize);
+    // Convert to MIDI note using the scale system
+    int rawNote = degree + octaveBase * (int)scaleSize;
+    m->note_set[i] = rawNoteToMidi(rawNote);
+  }
+}
+
+// Generate a melody for the given voice using the scale-correct note set.
+// The melody notes are already in the scale since the note set is.
+static void generate_scale_melody(byte mem, byte voice) {
+  Memory* m = &memories[mem];
+  Pattern* p = &m->patterns[voice];
+  uint16_t random_state = myRandomState;
+  myRandomState = (m->random_seed << 1) ^ voice;
+  generate_melody(
+    m->note_set, m->num_notes_in_set,
+    p->notes, sizeof(p->notes),
+    &p->accent, &p->glide);
+  myRandomState = random_state;
+}
+
+// Generate only the specified part (Syn1, Syn2, or Drm).
+// Leaves other parts untouched. All notes are in the active scale.
+void jukebox_generate_part(EditType part) {
+  Memory* m = &memories[cur_memory];
+
+  if (part == Syn1) {
+    // Generate a new note set from the active scale
+    generate_scale_note_set(m);
+
+    // Generate melody for synth1 (voice 0)
+    generate_scale_melody(cur_memory, 0);
+
+    // Bridge synth1 into globalSeq
+    for (int i = 0; i < 16; i++) {
+      globalSeq.synth1.steps[i].note   = m->patterns[0].notes[i];
+      globalSeq.synth1.steps[i].active = (m->patterns[0].notes[i] > 0);
+      globalSeq.synth1.steps[i].accent = (m->patterns[0].accent >> i) & 1;
+      globalSeq.synth1.steps[i].slide  = (m->patterns[0].glide >> i) & 1;
+    }
+  } else if (part == Syn2) {
+    // Generate a new note set from the active scale
+    generate_scale_note_set(m);
+
+    // Generate melody for synth2 (voice 1) — one octave above synth1
+    generate_scale_melody(cur_memory, 1);
+
+    // Bridge synth2 into globalSeq
+    for (int i = 0; i < 16; i++) {
+      globalSeq.synth2.steps[i].note   = m->patterns[1].notes[i];
+      globalSeq.synth2.steps[i].active = (m->patterns[1].notes[i] > 0);
+      globalSeq.synth2.steps[i].accent = (m->patterns[1].accent >> i) & 1;
+      globalSeq.synth2.steps[i].slide  = (m->patterns[1].glide >> i) & 1;
+    }
+  } else if (part == Drm) {
+    mem_generate_drums(cur_memory, DrumStraight);
+
+    // Bridge drums into globalSeq
+    for (int i = 0; i < 16; i++) {
+      uint16_t mask = 0;
+      Pattern* pKick  = &memories[cur_memory].patterns[2];
+      Pattern* pSnare = &memories[cur_memory].patterns[3];
+      Pattern* pCh    = &memories[cur_memory].patterns[4];
+      Pattern* pOh    = &memories[cur_memory].patterns[5];
+      Pattern* pPerc  = &memories[cur_memory].patterns[6];
+      Pattern* pCrash = &memories[cur_memory].patterns[7];
+      if (pKick->notes[i]  > 0)  mask |= (1 << 0);
+      if (pSnare->notes[i] > 0)  mask |= (1 << 1);
+      if (pCh->notes[i]    > 0)  mask |= (1 << 2);
+      if (pOh->notes[i]    > 0)  mask |= (1 << 3);
+      if (pPerc->notes[i]  > 0)  mask |= (1 << 10);
+      if (pCrash->notes[i] > 0)  mask |= (1 << 8);
+      globalSeq.drum.steps[i] = mask;
+    }
+  }
+}
+
+// Generate all parts (Syn1, Syn2, and Drm) — full pattern generation.
+// All notes are in the active scale.
+void jukebox_generate_all() {
+  Memory* m = &memories[cur_memory];
+
+  // Generate a single note set for both synths
+  generate_scale_note_set(m);
+
+  // Generate melody for synth1 (voice 0)
+  generate_scale_melody(cur_memory, 0);
+
+  // Generate melody for synth2 (voice 1) — one octave above synth1
+  generate_scale_melody(cur_memory, 1);
+
+  // Generate drums
+  mem_generate_drums(cur_memory, DrumStraight);
+
+  // ---- Bridge all patterns into globalSeq ----
+  // Synth 1 (patterns[0]) and Synth 2 (patterns[1])
+  for (int voice = 0; voice < 2; voice++) {
+    SynthPattern* sp = (voice == 0) ? &globalSeq.synth1 : &globalSeq.synth2;
+    Pattern* pat = &memories[cur_memory].patterns[voice];
+    for (int i = 0; i < 16; i++) {
+      sp->steps[i].note   = pat->notes[i];
+      sp->steps[i].active = (pat->notes[i] > 0);
+      sp->steps[i].accent = (pat->accent >> i) & 1;
+      sp->steps[i].slide  = (pat->glide >> i) & 1;
+    }
+  }
+
+  // Drum patterns
+  for (int i = 0; i < 16; i++) {
+    uint16_t mask = 0;
+    Pattern* pKick  = &memories[cur_memory].patterns[2];
+    Pattern* pSnare = &memories[cur_memory].patterns[3];
+    Pattern* pCh    = &memories[cur_memory].patterns[4];
+    Pattern* pOh    = &memories[cur_memory].patterns[5];
+    Pattern* pPerc  = &memories[cur_memory].patterns[6];
+    Pattern* pCrash = &memories[cur_memory].patterns[7];
+    if (pKick->notes[i]  > 0)  mask |= (1 << 0);
+    if (pSnare->notes[i] > 0)  mask |= (1 << 1);
+    if (pCh->notes[i]    > 0)  mask |= (1 << 2);
+    if (pOh->notes[i]    > 0)  mask |= (1 << 3);
+    if (pPerc->notes[i]  > 0)  mask |= (1 << 10);
+    if (pCrash->notes[i] > 0)  mask |= (1 << 8);
+    globalSeq.drum.steps[i] = mask;
+  }
+}
 
 #endif
