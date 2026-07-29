@@ -31,6 +31,14 @@ static uint8_t lastEditNote = 0;       // last note we set for hysteresis
 static UiMode savedUiMode = UI_NORMAL;
 static bool tempMasterVolOverride = false;
 
+// Flags to suppress F-key release actions when the pot was used with that F-key.
+// Set in handlePot() when F2/F3/F4/F8 + Pot combos are used.
+// Checked and cleared in processButtons() / handleFunctionButtons().
+bool f2PotUsed = false;
+bool f3PotUsed = false;
+bool f4PotUsed = false;
+bool f8PotUsed = false;
+
 // ---------- LOCK POT ----------
 // Lock the pot so it ignores small movements after a mode change.
 // The pot will only respond again once the user moves it past POT_LOCK_THRESHOLD
@@ -144,6 +152,41 @@ void handlePot(uint16_t potVal)
 			refreshOLED = true;
 			ledsDirty = true;
 		}
+		// Mark that F8 was used with the pot — suppress F8 release toggle
+		f8PotUsed = true;
+		return;
+	}
+
+	// ---- F2+Pot shortcut: adjust Synth1 volume while F2 is held ----
+	if (isButtonPressed(BTN_F2) && currentUiMode == UI_NORMAL)
+	{
+		uint8_t newVol = (uint8_t)((float)potVal / 4095.0f * 127.0f);
+		handleCC(SYNTH1_MIDI_CHAN, CC_303_VOLUME, newVol);
+		f2PotUsed = true;
+		refreshOLED = true;
+		ledsDirty = true;
+		return;
+	}
+
+	// ---- F3+Pot shortcut: adjust Synth2 volume while F3 is held ----
+	if (isButtonPressed(BTN_F3) && currentUiMode == UI_NORMAL)
+	{
+		uint8_t newVol = (uint8_t)((float)potVal / 4095.0f * 127.0f);
+		handleCC(SYNTH2_MIDI_CHAN, CC_303_VOLUME, newVol);
+		f3PotUsed = true;
+		refreshOLED = true;
+		ledsDirty = true;
+		return;
+	}
+
+	// ---- F4+Pot shortcut: adjust Drums volume while F4 is held ----
+	if (isButtonPressed(BTN_F4) && currentUiMode == UI_NORMAL)
+	{
+		uint8_t newVol = (uint8_t)((float)potVal / 4095.0f * 127.0f);
+		handleCC(DRUM_MIDI_CHAN, CC_808_VOLUME, newVol);
+		f4PotUsed = true;
+		refreshOLED = true;
+		ledsDirty = true;
 		return;
 	}
 

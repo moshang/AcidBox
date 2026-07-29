@@ -90,6 +90,12 @@ extern bool muteSynth1;
 extern bool muteSynth2;
 extern bool muteDrums;
 
+// Pot-used-with-F-key flags (suppress F-key release actions after pot adjustment)
+extern bool f2PotUsed;
+extern bool f3PotUsed;
+extern bool f4PotUsed;
+extern bool f8PotUsed;
+
 // Master volume (0.0 - 1.0, set via F8+Step16)
 extern float masterVolume;
 

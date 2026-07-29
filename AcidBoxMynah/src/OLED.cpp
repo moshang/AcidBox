@@ -218,6 +218,38 @@ void updateOLED()
         return;
     }
 
+    // ---- UI_CLEARPART mode: show "CLEAR" on line 1, "PART [F7]" on line 2 ----
+    if (currentUiMode == UI_CLEARPART)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("CLEAR");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        u8g2.print("PART [F7]");
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
+    // ---- UI_CLEARPATTERN mode: show "CLEAR" on line 1, "PATTERN [F7]" on line 2 ----
+    if (currentUiMode == UI_CLEARPATTERN)
+    {
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("CLEAR");
+
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 45);
+        u8g2.print("PATTERN [F7]");
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
     // ---- UI_PARTGEN mode: show "PART" on line 1, "CREATE [F5]" on line 2 ----
     if (currentUiMode == UI_PARTGEN)
     {

@@ -214,6 +214,8 @@ static bool handleKitStepCombos();
 static bool handleF8ScaleRootCombos();
 static bool handleF5PartGen();
 static bool handleF6PatternGen();
+static bool handleF7ClearPart();
+static bool handleF8F7ClearPattern();
 static bool handleAcidBoxSelectModes();
 static void handleFunctionButtons();
 
@@ -241,6 +243,12 @@ void processButtons()
 
 	// F6 full pattern generation (all parts)
 	if (handleF6PatternGen())
+	{
+		return;
+	}
+
+	// F7 clear current part (notes + automation)
+	if (handleF7ClearPart())
 	{
 		return;
 	}
@@ -276,9 +284,18 @@ void processButtons()
 	}
 
 	// F8 release: toggle sequencer start/stop
+	// BUT: if the pot was used while F8 was held (F8+Pot volume shortcut),
+	// suppress the toggle — the user was adjusting volume, not toggling play.
 	if (isButtonJustReleased(BTN_F8))
 	{
-		sequencer_toggle_play();
+		if (f8PotUsed)
+		{
+			f8PotUsed = false; // consume the flag
+		}
+		else
+		{
+			sequencer_toggle_play();
+		}
 	}
 
 	handleFunctionButtons();
@@ -507,6 +524,8 @@ static bool handleF1Combos()
 // Double-click toggles mute for the corresponding voice.
 // Nudge suppression flags prevent edit-type switches when F2/F3 were used
 // in F1+F2 / F1+F3 nudge combos.
+// Pot-used flags prevent edit-type switches when F2/F3/F4 were used with
+// the pot for volume shortcuts (F2+Pot, F3+Pot, F4+Pot).
 static void handleFunctionButtons()
 {
 	if (isButtonJustReleased(BTN_F2))
@@ -514,6 +533,10 @@ static void handleFunctionButtons()
 		if (suppressF2Release)
 		{
 			suppressF2Release = false; // consume the suppression
+		}
+		else if (f2PotUsed)
+		{
+			f2PotUsed = false; // consume the flag — pot was used, don't switch edit type
 		}
 		else if (isDoubleClick(BTN_F2))
 		{
@@ -532,6 +555,10 @@ static void handleFunctionButtons()
 		{
 			suppressF3Release = false; // consume the suppression
 		}
+		else if (f3PotUsed)
+		{
+			f3PotUsed = false; // consume the flag — pot was used, don't switch edit type
+		}
 		else if (isDoubleClick(BTN_F3))
 		{
 			muteSynth2 = !muteSynth2;
@@ -545,7 +572,11 @@ static void handleFunctionButtons()
 
 	if (isButtonJustReleased(BTN_F4))
 	{
-		if (isDoubleClick(BTN_F4))
+		if (f4PotUsed)
+		{
+			f4PotUsed = false; // consume the flag — pot was used, don't switch edit type
+		}
+		else if (isDoubleClick(BTN_F4))
 		{
 			muteDrums = !muteDrums;
 			refreshOLED = true;
@@ -650,6 +681,104 @@ static bool handleF6PatternGen()
             refreshOLED = true;
             ledsDirty = true;
         }
+        return true;
+    }
+
+    return false;
+}
+
+// ==================== F7 CLEAR PART / CLEAR PATTERN ====================
+// Handles F7 press: two-state toggle for part clear, or single-shot for pattern clear.
+// UI_CLEARPART (entered by standalone F7 from UI_NORMAL):
+//   First F7 press: enter UI_CLEARPART mode, show "CLEAR / PART [F7]" on OLED.
+//   Second F7 press: clear notes + automation for the currently selected part, exit to UI_NORMAL.
+// UI_CLEARPATTERN (entered by F8+F7 combo, handled in handleF8ScaleRootCombos):
+//   F7 press while in this mode: clear all three parts (Syn1, Syn2, Drm), exit to UI_NORMAL.
+// F7 must be pressed alone (no other function buttons held).
+static bool handleF7ClearPart()
+{
+    // If F8 is held while F7 is pressed, let the F8+F7 combo handler take over.
+    // The entry into UI_CLEARPATTERN is handled in handleF8ScaleRootCombos().
+    if (isButtonPressed(BTN_F8))
+        return false;
+
+    // ---- Already in CLEARPART or CLEARPATTERN mode ----
+    if (currentUiMode == UI_CLEARPART || currentUiMode == UI_CLEARPATTERN)
+    {
+        // F7 must be pressed alone (no other function buttons) — but we already
+        // know F8 is not held (checked above).
+        if (isButtonPressed(BTN_F1) || isButtonPressed(BTN_F2) ||
+            isButtonPressed(BTN_F3) || isButtonPressed(BTN_F4) ||
+            isButtonPressed(BTN_F5) || isButtonPressed(BTN_F6))
+            return false;
+
+        if (isButtonJustPressed(BTN_F7))
+        {
+            if (currentUiMode == UI_CLEARPART)
+            {
+                // F7 pressed again — clear the current part (notes + automation)
+                sequencer_clear_part(currentEditType);
+
+                Serial.printf("F7: Cleared %s part\n", editTypeNames[currentEditType]);
+            }
+            else // UI_CLEARPATTERN
+            {
+                // F7 pressed — clear all three parts
+                sequencer_clear_part(Syn1);
+                sequencer_clear_part(Syn2);
+                sequencer_clear_part(Drm);
+
+                Serial.printf("F7: Cleared all pattern data\n");
+            }
+
+            // Exit clear mode
+            currentUiMode = UI_NORMAL;
+            refreshOLED = true;
+            ledsDirty = true;
+            return true;
+        }
+
+        // While in CLEARPART or CLEARPATTERN mode, block standalone step handlers
+        // so step buttons don't toggle steps accidentally.
+        return true;
+    }
+
+    // ---- Not in a clear mode: handle standalone F7 to enter UI_CLEARPART ----
+    // F7 must be pressed alone (no other function buttons — F8 already checked above)
+    if (isButtonPressed(BTN_F1) || isButtonPressed(BTN_F2) ||
+        isButtonPressed(BTN_F3) || isButtonPressed(BTN_F4) ||
+        isButtonPressed(BTN_F5) || isButtonPressed(BTN_F6))
+        return false;
+
+    if (isButtonJustPressed(BTN_F7))
+    {
+        // Enter CLEARPART mode
+        currentUiMode = UI_CLEARPART;
+        potLock();
+        refreshOLED = true;
+        ledsDirty = true;
+        return true;
+    }
+
+    return false;
+}
+
+// ==================== F8+F7 CLEAR PATTERN ENTRY ====================
+// Called from handleF8ScaleRootCombos when F8 is held and F7 is just pressed.
+// Enters UI_CLEARPATTERN mode. The actual clear happens when F7 is pressed
+// again (handled by handleF7ClearPart above).
+static bool handleF8F7ClearPattern()
+{
+    // F8 must be held, F7 must be just pressed
+    if (!isButtonPressed(BTN_F8))
+        return false;
+
+    if (isButtonJustPressed(BTN_F7) && currentUiMode != UI_CLEARPATTERN)
+    {
+        currentUiMode = UI_CLEARPATTERN;
+        potLock();
+        refreshOLED = true;
+        ledsDirty = true;
         return true;
     }
 
@@ -1069,9 +1198,19 @@ static bool handleF8ScaleRootCombos()
 		return false;
 	}
 
-	// Allow switching between sub-modes while F8 is held
+	// Allow switching between sub-modes while F8 is held (and F8+F7 for clear pattern)
 		if (isButtonPressed(BTN_F8))
 		{
+			// F8+F7: enter CLEARPATTERN mode (clear all pattern data)
+			if (isButtonJustPressed(BTN_F7) && currentUiMode != UI_CLEARPATTERN)
+			{
+				currentUiMode = UI_CLEARPATTERN;
+				potLock();
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
+
 			if (isButtonJustPressed(BTN_STEP_1) && currentUiMode != UI_PATTERN_SELECT)
 			{
 				currentUiMode = UI_PATTERN_SELECT;
@@ -1162,6 +1301,16 @@ static bool handleF8ScaleRootCombos()
 	// Only enter sub-modes when F8 is held
 	if (!isButtonPressed(BTN_F8))
 		return false;
+
+	// F8+F7: enter CLEARPATTERN mode (clear all pattern data)
+	if (isButtonJustPressed(BTN_F7) && currentUiMode != UI_CLEARPATTERN)
+	{
+		currentUiMode = UI_CLEARPATTERN;
+		potLock();
+		refreshOLED = true;
+		ledsDirty = true;
+		return true;
+	}
 
 	// F8+Step1: enter PATTERN SELECT mode
 	if (isButtonJustPressed(BTN_STEP_1))

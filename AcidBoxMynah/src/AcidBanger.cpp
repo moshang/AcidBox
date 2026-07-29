@@ -47,6 +47,12 @@
 // added crash cymbal
 // removed/modified buttons processing
 //
+// 2026 edit by MS
+// added F5/F6 pattern generation via jukebox_generate_part() / jukebox_generate_all()
+// fixed deterministic random seed in generate_scale_melody() (fresh seed per call)
+// added per-voice octave range restrictions (synth1: MIDI 24-47, synth2: MIDI 36-72)
+// fixed scale conformance by replacing raw clamping with octave wrapping
+//
 
 #define KICK_NOTE               0 //001
 #define SNARE_NOTE              1 //002
@@ -1386,20 +1392,38 @@ extern uint16_t currentScale;
 // Generate a note set using scale degrees from the active scale.
 // Populates m->note_set with MIDI notes that are guaranteed to be
 // in the user's selected scale and root.
-static void generate_scale_note_set(Memory* m) {
-  // Pick a random octave offset (0..2) so notes span a few octaves
-  uint8_t octaveBase = myRandom(3); // 0, 1, or 2 octaves above root
+// minNote/maxNote clamp the generated MIDI notes to a specific range
+// (e.g. synth1 = bottom two octaves 24-47, synth2 = top three octaves 36-72).
+static void generate_scale_note_set(Memory* m, uint8_t minNote, uint8_t maxNote) {
   // Pick a random number of notes (4..8)
   uint8_t numNotes = 4 + myRandom(5);
   if (numNotes > MaxNoteSet) numNotes = MaxNoteSet;
   m->num_notes_in_set = numNotes;
 
+  // Compute MIDI notes directly using scale intervals and absolute octave numbers.
+  // rawNoteToMidi() is relative to rootNote (e.g. C4=60), so we must offset
+  // by (targetOctave - rootOctave) * 12 to land in the desired range.
+  uint8_t rootOctave = rootNote / 12;
+  uint8_t minOctave = minNote / 12;
+  uint8_t maxOctave = maxNote / 12;
+  uint8_t numOctaves = maxOctave - minOctave + 1;
+
   for (int i = 0; i < numNotes; i++) {
     // Pick a random scale degree (0..scaleSize-1)
     int degree = myRandom(scaleSize);
-    // Convert to MIDI note using the scale system
-    int rawNote = degree + octaveBase * (int)scaleSize;
-    m->note_set[i] = rawNoteToMidi(rawNote);
+    // Pick a random MIDI octave within the allowed range
+    uint8_t octave = minOctave + myRandom(numOctaves);
+    // Compute MIDI note: rootNote + semitone offset + octave shift
+    int notenum = (int)rootNote
+                  + (int)scalePointer[degree] - 1
+                  + ((int)octave - (int)rootOctave) * 12;
+    // Shift by whole octaves until the note falls within range.
+    // This preserves the scale degree (same pitch class), so the note
+    // remains in the current scale regardless of rootNote.
+    // Simple clamping to minNote/maxNote would break scale conformance.
+    while (notenum < (int)minNote) notenum += 12;
+    while (notenum > (int)maxNote) notenum -= 12;
+    m->note_set[i] = (uint8_t)notenum;
   }
 }
 
@@ -1408,6 +1432,10 @@ static void generate_scale_note_set(Memory* m) {
 static void generate_scale_melody(byte mem, byte voice) {
   Memory* m = &memories[mem];
   Pattern* p = &m->patterns[voice];
+  // Update the random seed so each generation produces a genuinely new pattern.
+  // Without this, the same seed is reused and only pitches change while the
+  // step on/off rhythm pattern stays identical.
+  m->random_seed = myRandomRaw();
   uint16_t random_state = myRandomState;
   myRandomState = (m->random_seed << 1) ^ voice;
   generate_melody(
@@ -1424,7 +1452,8 @@ void jukebox_generate_part(EditType part) {
 
   if (part == Syn1) {
     // Generate a new note set from the active scale
-    generate_scale_note_set(m);
+    // Synth1: bottom two octaves of TB-303 range (MIDI 24-47, C1-B2)
+    generate_scale_note_set(m, 24, 47);
 
     // Generate melody for synth1 (voice 0)
     generate_scale_melody(cur_memory, 0);
@@ -1438,9 +1467,10 @@ void jukebox_generate_part(EditType part) {
     }
   } else if (part == Syn2) {
     // Generate a new note set from the active scale
-    generate_scale_note_set(m);
+    // Synth2: top three octaves of TB-303 range (MIDI 36-72, C2-C5)
+    generate_scale_note_set(m, 36, 72);
 
-    // Generate melody for synth2 (voice 1) — one octave above synth1
+    // Generate melody for synth2 (voice 1)
     generate_scale_melody(cur_memory, 1);
 
     // Bridge synth2 into globalSeq
@@ -1478,13 +1508,15 @@ void jukebox_generate_part(EditType part) {
 void jukebox_generate_all() {
   Memory* m = &memories[cur_memory];
 
-  // Generate a single note set for both synths
-  generate_scale_note_set(m);
-
+  // Generate separate note sets for each synth voice with their own octave ranges.
+  // Synth1: bottom two octaves of TB-303 range (MIDI 24-47, C1-B2)
+  generate_scale_note_set(m, 24, 47);
   // Generate melody for synth1 (voice 0)
   generate_scale_melody(cur_memory, 0);
 
-  // Generate melody for synth2 (voice 1) — one octave above synth1
+  // Synth2: top three octaves of TB-303 range (MIDI 36-72, C2-C5)
+  generate_scale_note_set(m, 36, 72);
+  // Generate melody for synth2 (voice 1)
   generate_scale_melody(cur_memory, 1);
 
   // Generate drums
