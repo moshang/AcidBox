@@ -72,8 +72,8 @@ enum UiMode {
   UI_BANK_SELECT,         // F8+Step11: bank browse/select mode
   UI_PARTGEN,             // F5: press once for "PART" display, press again to generate current part
   UI_PATTERNGEN,          // F6: press once for "PATTERN" display, press again to generate all parts
-  UI_CLEARPART,           // F7: press once for "CLEAR PART" display, press again to clear current part
-  UI_CLEARPATTERN         // F8+F7: clear all pattern data (all three parts)
+  UI_CLEARPART,           // F8+F5: press once for "PART / CLEAR [F5]" display, press F5 again to clear current part
+  UI_CLEARPATTERN         // F8+F6: press once for "PATTERN / CLEAR [F6]" display, press F6 again to clear all pattern data
 };
 extern UiMode currentUiMode;
 

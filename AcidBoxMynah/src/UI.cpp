@@ -13,7 +13,7 @@ const char* synthEditModeNames[16] = {
     "CUTOFF",        // F1+A1
     "RESO",          // F1+A2
     "WAVE",          // F1+A3
-    "ENV MOD LVL",   // F1+A4
+    "ENV MOD",       // F1+A4
     "PAN",           // F1+A5
     "DELAY",         // F1+A6
     "REVERB",        // F1+A7
