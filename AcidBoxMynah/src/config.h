@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 #define PROG_NAME       "ESP32 AcidBox"
-#define VERSION         "v.1.3.3"
+#define VERSION         "v.1.0"
 
 // Startup power-rail stabilization delay (milliseconds)
 // Gives the battery boost converter time to stabilize its output

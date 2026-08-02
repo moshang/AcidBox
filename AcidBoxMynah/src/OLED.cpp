@@ -169,10 +169,10 @@ void updateOLED()
         u8g2.setCursor(0, 45);
         // Show current pattern slot (1-16) and bank/song context
         char buf[32];
-        snprintf(buf, sizeof(buf), "P%02d  B%02d S%02d",
+        snprintf(buf, sizeof(buf), "P%02d  S%02d B%02d",
                  acidBoxSaveLoad.currentPattern + 1,
-                 acidBoxSaveLoad.currentBank + 1,
-                 acidBoxSaveLoad.currentSong + 1);
+                 acidBoxSaveLoad.currentSong + 1,
+                 acidBoxSaveLoad.currentBank + 1);
         u8g2.print(buf);
 
         u8g2.sendBuffer();

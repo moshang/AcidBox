@@ -290,50 +290,11 @@ void handlePot(uint16_t potVal)
 		return;
 	}
 
-	// ---- PATTERN_SELECT mode: pot scrolls through patterns ----
-	if (currentUiMode == UI_PATTERN_SELECT)
+	// ---- PATTERN_SELECT / SONG_SELECT / BANK_SELECT modes: pot has no functionality ----
+	// The white highlight is strictly controlled by step button presses.
+	// The pot should be ignored in these modes.
+	if (currentUiMode == UI_PATTERN_SELECT || currentUiMode == UI_SONG_SELECT || currentUiMode == UI_BANK_SELECT)
 	{
-		uint8_t newPattern = (uint8_t)((float)potVal / 4095.0f * 15.0f + 0.5f);
-		if (newPattern > 15) newPattern = 15;
-		if (newPattern != acidBoxSaveLoad.currentPattern)
-		{
-			acidBoxSaveLoad.currentPattern = newPattern;
-			refreshOLED = true;
-			ledsDirty = true;
-		}
-		return;
-	}
-
-	// ---- SONG_SELECT mode: pot scrolls through songs ----
-	if (currentUiMode == UI_SONG_SELECT)
-	{
-		uint8_t newSong = (uint8_t)((float)potVal / 4095.0f * 15.0f + 0.5f);
-		if (newSong > 15) newSong = 15;
-		if (newSong != acidBoxSaveLoad.currentSong)
-		{
-			acidBoxSaveLoad.currentSong = newSong;
-			refreshAcidBoxSongCache();
-			refreshAcidBoxPatternCache();
-			refreshOLED = true;
-			ledsDirty = true;
-		}
-		return;
-	}
-
-	// ---- BANK_SELECT mode: pot scrolls through banks ----
-	if (currentUiMode == UI_BANK_SELECT)
-	{
-		uint8_t newBank = (uint8_t)((float)potVal / 4095.0f * 15.0f + 0.5f);
-		if (newBank > 15) newBank = 15;
-		if (newBank != acidBoxSaveLoad.currentBank)
-		{
-			acidBoxSaveLoad.currentBank = newBank;
-			refreshAcidBoxBankCache();
-			refreshAcidBoxSongCache();
-			refreshAcidBoxPatternCache();
-			refreshOLED = true;
-			ledsDirty = true;
-		}
 		return;
 	}
 
