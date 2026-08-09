@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 #define PROG_NAME       "ESP32 AcidBox"
-#define VERSION         "v.1.0"
+#define VERSION         "v.1.1"
 
 // Startup power-rail stabilization delay (milliseconds)
 // Gives the battery boost converter time to stabilize its output
@@ -32,10 +32,10 @@
 //#define DEBUG_TIMING
 //#define DEBUG_MIDI
 
-#define MIDI_VIA_SERIAL       // use this option to enable Hairless MIDI on Serial port @115200 baud (USB connector), THIS WILL BLOCK SERIAL DEBUGGING as well
-//#define MIDI_VIA_SERIAL2        // use this option if you want to operate by standard MIDI @31250baud, UART2 (Serial2), 
-#define MIDIRX_PIN      4       // this pin is used for input when MIDI_VIA_SERIAL2 defined (note that default pin 17 won't work with PSRAM)
-#define MIDITX_PIN      15      // this pin will be used for output (not implemented yet) when MIDI_VIA_SERIAL2 defined
+// Standard hardware MIDI uses the same UART pins as the MYNAH firmware.
+// GPIO 36 = MIDI IN, GPIO 35 = MIDI OUT on the shared SuperMini hardware.
+#define MIDIRX_PIN      36
+#define MIDITX_PIN      35
 
 #define POT_NUM 3
 #if defined(CONFIG_IDF_TARGET_ESP32S3)

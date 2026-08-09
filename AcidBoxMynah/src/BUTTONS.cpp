@@ -170,6 +170,7 @@ static void nudgeParam(int8_t direction)
         globalSeq.bpm = newBpm;
         bpm = newBpm;
         Delay.SetBPM(newBpm);
+        midiClockBpmChanged(newBpm);
         refreshOLED = true;
         ledsDirty = true;
     }
@@ -203,6 +204,27 @@ static void nudgeParam(int8_t direction)
         refreshOLED = true;
         ledsDirty = true;
     }
+	else if (currentUiMode == UI_CLOCK_SRC)
+	{
+		midiClockSetSource(midiClockSource() == CLOCK_SRC_INT ? CLOCK_SRC_MIDI : CLOCK_SRC_INT);
+		refreshOLED = true;
+		ledsDirty = true;
+	}
+	else if (currentUiMode == UI_CLOCK_OUT)
+	{
+		midiClockSetOutput(midiClockOutput() ? 0 : 1);
+		refreshOLED = true;
+		ledsDirty = true;
+	}
+	else if (currentUiMode == UI_CLOCK_OFFSET)
+	{
+		int newOffset = (int)midiClockOffset() + direction;
+		if (newOffset < 0) newOffset = 20;
+		if (newOffset > 20) newOffset = 0;
+		midiClockSetOffset((uint8_t)newOffset);
+		refreshOLED = true;
+		ledsDirty = true;
+	}
 }
 
 // ---------- FORWARD DECLARATIONS ----------
@@ -439,7 +461,11 @@ static bool handleF1Combos()
 		// Clear nudge suppression flags if F1 is released — but only if F2/F3
 		// are also no longer held (to avoid leaking suppression beyond the combo)
 		if (!isButtonPressed(BTN_F2)) suppressF2Release = false;
-		if (!isButtonPressed(BTN_F3)) suppressF3Release = false;
+		if (!isButtonPressed(BTN_F3) &&
+		    currentUiMode != UI_CLOCK_SRC && currentUiMode != UI_CLOCK_OUT &&
+		    currentUiMode != UI_CLOCK_OFFSET) {
+			suppressF3Release = false;
+		}
 		return false;
 	}
 
@@ -1088,6 +1114,13 @@ static bool handleF8ScaleRootCombos()
 			ledsDirty = true;
 			return false; // let processButtons continue to handleFunctionButtons
 		}
+		// F3 was used with F8 to enter/cycle the clock pages. Consume its
+		// release here so it cannot fall through to Synth2 selection.
+		if (isButtonJustReleased(BTN_F3) && suppressF3Release)
+		{
+			suppressF3Release = false;
+			return true;
+		}
 		if (isButtonJustReleased(BTN_F4) && currentUiMode != UI_KITS)
 		{
 			currentUiMode = UI_NORMAL;
@@ -1095,6 +1128,20 @@ static bool handleF8ScaleRootCombos()
 			refreshOLED = true;
 			ledsDirty = true;
 			return false; // let processButtons continue to handleFunctionButtons
+		}
+
+		// F8+V2 (F8+F3) cycles the two MIDI clock pages.  Suppress F3's
+		// normal voice-select action when the combo is released.
+		if (isButtonPressed(BTN_F8) && isButtonJustPressed(BTN_F3))
+		{
+			if (currentUiMode == UI_CLOCK_SRC) currentUiMode = UI_CLOCK_OUT;
+			else if (currentUiMode == UI_CLOCK_OUT) currentUiMode = UI_CLOCK_OFFSET;
+			else currentUiMode = UI_CLOCK_SRC;
+			suppressF3Release = true;
+			suppressF8ReleaseInSelectMode = true;
+			refreshOLED = true;
+			ledsDirty = true;
+			return true;
 		}
 
 	// ---- F8 release: pass through to sequencer toggle in processButtons() ----
@@ -1106,7 +1153,8 @@ static bool handleF8ScaleRootCombos()
 	// combo that entered the mode). Subsequent F8 releases toggle the sequencer.
 	if (isButtonJustReleased(BTN_F8) &&
 	    (currentUiMode == UI_PATTERN_SELECT || currentUiMode == UI_SONG_SELECT || currentUiMode == UI_BANK_SELECT ||
-	     currentUiMode == UI_BPM || currentUiMode == UI_SWING || currentUiMode == UI_MASTERVOL))
+	     currentUiMode == UI_BPM || currentUiMode == UI_SWING || currentUiMode == UI_MASTERVOL ||
+	     currentUiMode == UI_CLOCK_SRC || currentUiMode == UI_CLOCK_OUT || currentUiMode == UI_CLOCK_OFFSET))
 	{
 		if (suppressF8ReleaseInSelectMode)
 		{
@@ -1229,6 +1277,18 @@ static bool handleF8ScaleRootCombos()
 	// Only enter sub-modes when F8 is held
 	if (!isButtonPressed(BTN_F8))
 		return false;
+
+	// F8+V2 (F8+F3): open the MIDI clock settings pages.
+	if (isButtonJustPressed(BTN_F3))
+	{
+		currentUiMode = UI_CLOCK_SRC;
+		suppressF3Release = true;
+		suppressF8ReleaseInSelectMode = true;
+		potLock();
+		refreshOLED = true;
+		ledsDirty = true;
+		return true;
+	}
 
 	// F8+F5: enter CLEARPART mode (clear current part)
 	if (isButtonJustPressed(BTN_F5) && currentUiMode != UI_CLEARPART)

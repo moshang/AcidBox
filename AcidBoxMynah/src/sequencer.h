@@ -126,6 +126,11 @@ void sequencer_toggle_play();
 // Checks micros() and fires sequencer_tick() at the correct interval.
 void sequencer_service();
 
+// Fire exactly one 16th-note boundary from an external MIDI clock grid.
+// The MIDI handler owns the 24 PPQN clock counter; this function owns the
+// AcidBox step/voice transition for the currently selected playback mode.
+void sequencer_midi_step();
+
 // Toggle a drum step on/off for a specific lane (bitmask)
 void sequencer_toggle_drum_step(uint8_t step, uint16_t laneMask);
 

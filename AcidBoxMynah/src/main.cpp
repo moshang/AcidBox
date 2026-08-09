@@ -785,6 +785,7 @@ void regular_checks() {
   timer1_fired = false;
   
   midi_read();
+  midiClockService();
 
   // Process any deferred drum kit loads (avoids WDT timeout during Init())
   processDeferredKitLoad();
@@ -793,7 +794,8 @@ void regular_checks() {
 #ifdef JUKEBOX
   if (currentMode == MODE_JUKEBOX) {
     // Jukebox generation + sequencer engine
-    jukebox_tick();
+    // MIDI follower mode is driven directly from the real-time clock callback.
+    if (midiClockSource() != CLOCK_SRC_MIDI) jukebox_tick();
   } else {
     // EDIT mode: jukebox generation suspended,
     // sequencer loops the patterns in globalSeq continuously

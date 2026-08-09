@@ -38,15 +38,37 @@ void buildTables();
 void init_midi();
 void run_tick();
 void jukebox_reset_parameters();
+void jukebox_midi_start();
+void jukebox_midi_stop();
+void jukebox_midi_continue();
+void jukebox_midi_step();
 void jukebox_generate_part(EditType part);
 void jukebox_generate_all();
 uint16_t myRandomAddEntropy(uint16_t entropy);
 void midi_read();
+void midiClockService();
 void midi_send_noteon(uint8_t chan, uint8_t note, uint8_t vol);
 void midi_send_noteoff(uint8_t chan, uint8_t note);
 void handleNoteOn(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity);
 void handleNoteOff(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity);
 void handleCC(uint8_t inChannel, uint8_t cc_number, uint8_t cc_value);
+
+// Shared MIDI clock/transport state and controls.
+#define CLOCK_SRC_INT  0
+#define CLOCK_SRC_MIDI 1
+extern volatile uint8_t clockSource;
+extern volatile uint8_t clockOut;
+extern volatile bool midiClockSync;
+void midiClockSetSource(uint8_t source);
+void midiClockSetOutput(uint8_t enabled);
+void midiClockSetOffset(uint8_t offsetMs);
+void midiClockBpmChanged(float newBpm);
+void midiClockTransportStart();
+void midiClockTransportStop();
+bool midiClockIsSynchronized();
+uint8_t midiClockSource();
+uint8_t midiClockOutput();
+uint8_t midiClockOffset();
 
 // ---- MYNAH HARDWARE FUNCTION DECLARATIONS ----
 void neopixelInit();

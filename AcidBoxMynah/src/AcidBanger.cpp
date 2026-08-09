@@ -1085,6 +1085,7 @@ void jukebox_reset_parameters() {
 
 static void do_midi_start() {
   midi_playing = 1;
+  globalSeq.isPlaying = true;
   midi_tick = MIDI_TICKS_PER_16TH - 1;
   midi_step = -1;
   jukebox_reset_parameters();
@@ -1212,12 +1213,32 @@ static void do_midi_tick() {
 
 void do_midi_stop() {
   instr_allnotesoff();
+  globalSeq.isPlaying = false;
   send_midi_stop();
   midi_playing = 0;
   // Clear neopixels when sequencer stops
   strip.ClearTo(RgbColor(0, 0, 0));
   strip.Show();
   ledsDirty = true;
+}
+
+// Transport entry points used by the hardware MIDI clock callbacks.  The
+// legacy jukebox engine still owns note generation in JUKEBOX mode, but its
+// 16th-note boundary is now supplied by the external 24 PPQN clock.
+void jukebox_midi_start() {
+  do_midi_start();
+}
+
+void jukebox_midi_stop() {
+  do_midi_stop();
+}
+
+void jukebox_midi_continue() {
+  midi_playing = 1;
+}
+
+void jukebox_midi_step() {
+  if (midi_playing) do_midi_tick();
 }
 
 void midi_toggle_play() {

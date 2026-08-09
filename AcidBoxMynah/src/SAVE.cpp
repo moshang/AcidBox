@@ -328,6 +328,7 @@ bool loadAcidBoxPattern(uint8_t bankNum, uint8_t songNum, uint8_t patternNum) {
     // Update the global bpm variable used by the jukebox
     bpm = pf.bpm;
     Delay.SetBPM(bpm);
+    midiClockBpmChanged(bpm);
 
     // Restore scale and root note (version 3+)
     if (pf.version >= 3) {

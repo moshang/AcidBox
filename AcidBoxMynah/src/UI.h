@@ -73,7 +73,10 @@ enum UiMode {
   UI_PARTGEN,             // F5: press once for "PART" display, press again to generate current part
   UI_PATTERNGEN,          // F6: press once for "PATTERN" display, press again to generate all parts
   UI_CLEARPART,           // F8+F5: press once for "PART / CLEAR [F5]" display, press F5 again to clear current part
-  UI_CLEARPATTERN         // F8+F6: press once for "PATTERN / CLEAR [F6]" display, press F6 again to clear all pattern data
+  UI_CLEARPATTERN,        // F8+F6: press once for "PATTERN / CLEAR [F6]" display, press F6 again to clear all pattern data
+  UI_CLOCK_SRC,           // F8+V2 [1]: clock source (Internal / MIDI)
+  UI_CLOCK_OUT,           // F8+V2 [2]: MIDI clock output (OFF / ON)
+  UI_CLOCK_OFFSET         // F8+V2 [3]: slave audio offset (0..20 ms)
 };
 extern UiMode currentUiMode;
 

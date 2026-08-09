@@ -155,12 +155,14 @@ void sequencer_start() {
   globalSeq.currentStep = 15;
   lastTickUs = micros();
   nextTickIntervalUs = calc_16th_interval_us(globalSeq.bpm);
+  midiClockTransportStart();
 }
 
 void sequencer_stop() {
   if (!globalSeq.isPlaying) return;
   globalSeq.isPlaying = false;
   sequencer_all_notes_off();
+  midiClockTransportStop();
 }
 
 void sequencer_toggle_play() {
@@ -168,10 +170,11 @@ void sequencer_toggle_play() {
     // In JUKEBOX mode: toggle the legacy jukebox generation engine.
     // This flips midi_playing, which drives run_tick() → sequencer_step()
     // that bridges patterns into globalSeq and plays via legacy MIDI.
+    const bool wasPlaying = globalSeq.isPlaying;
     midi_toggle_play();
-    // Keep globalSeq.isPlaying in sync with the jukebox
-    // (midi_toggle_play flips midi_playing inside AcidBanger.cpp)
-    globalSeq.isPlaying = !globalSeq.isPlaying;
+    // do_midi_start()/do_midi_stop() update globalSeq.isPlaying directly.
+    if (wasPlaying) midiClockTransportStop();
+    else midiClockTransportStart();
   } else {
     // In EDIT mode: toggle the new microsecond-accurate sequencer engine.
     // The jukebox generation is suspended — only sequencer_service() runs.
@@ -465,6 +468,10 @@ static void sequencer_interpolate_cutoff() {
 void sequencer_service() {
   if (!globalSeq.isPlaying) return;
 
+  // In follower mode the MIDI real-time callback owns the step grid.  Do not
+  // let the local micros() scheduler generate a competing tick stream.
+  if (midiClockSource() == CLOCK_SRC_MIDI) return;
+
   // Run cutoff interpolation on every poll (smooth ramping)
   sequencer_interpolate_cutoff();
 
@@ -496,6 +503,11 @@ void sequencer_service() {
     // 3. Advance the timing anchor by the interval we JUST completed
     lastTickUs += completedInterval;
   }
+}
+
+void sequencer_midi_step() {
+  if (!globalSeq.isPlaying) return;
+  sequencer_tick();
 }
 
 // ============================================================

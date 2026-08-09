@@ -232,7 +232,48 @@ void handlePot(uint16_t potVal)
 			globalSeq.bpm = newBpm;
 			bpm = newBpm;
 			Delay.SetBPM(newBpm);
+			midiClockBpmChanged(newBpm);
 			acidBoxSaveLoad.modified = true;
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
+	// ---- MIDI clock source: Internal / MIDI ----
+	if (currentUiMode == UI_CLOCK_SRC)
+	{
+		uint8_t source = (potVal >= 2048) ? CLOCK_SRC_MIDI : CLOCK_SRC_INT;
+		if (source != midiClockSource())
+		{
+			midiClockSetSource(source);
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
+	// ---- MIDI clock output: OFF / ON ----
+	if (currentUiMode == UI_CLOCK_OUT)
+	{
+		uint8_t output = (potVal >= 2048) ? 1 : 0;
+		if (output != midiClockOutput())
+		{
+			midiClockSetOutput(output);
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
+	// ---- MIDI slave audio offset: 0..20 ms ----
+	if (currentUiMode == UI_CLOCK_OFFSET)
+	{
+		uint8_t newOffset = (uint8_t)(((uint32_t)potVal * 20UL + 2047UL) / 4095UL);
+		if (newOffset > 20) newOffset = 20;
+		if (newOffset != midiClockOffset())
+		{
+			midiClockSetOffset(newOffset);
 			refreshOLED = true;
 			ledsDirty = true;
 		}

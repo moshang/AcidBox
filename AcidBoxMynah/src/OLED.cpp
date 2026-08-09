@@ -158,6 +158,50 @@ void updateOLED()
         return;
     }
 
+    // ---- UI_CLOCK_SRC: show Internal / MIDI ----
+    if (currentUiMode == UI_CLOCK_SRC)
+    {
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("CLOCK SRC");
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 45);
+        u8g2.print(midiClockSource() == CLOCK_SRC_MIDI ? "MIDI" : "INTERN");
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
+    // ---- UI_CLOCK_OUT: show OFF / ON ----
+    if (currentUiMode == UI_CLOCK_OUT)
+    {
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("CLOCK OUT");
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 45);
+        u8g2.print(midiClockOutput() ? "ON" : "OFF");
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
+    // ---- UI_CLOCK_OFFSET: show the slave audio trigger offset ----
+    if (currentUiMode == UI_CLOCK_OFFSET)
+    {
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("OFFSET");
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 45);
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d ms", midiClockOffset());
+        u8g2.print(buf);
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
     // ---- UI_PATTERN_SELECT mode ----
     if (currentUiMode == UI_PATTERN_SELECT)
     {
