@@ -163,6 +163,11 @@ void sequencer_load_drum_pattern(DrumPattern* dst, const uint8_t* kick, const ui
 // Apply automation for the current step — called from sequencer_tick()
 void sequencer_apply_automation();
 
+// Apply the loaded pattern's current parameter state immediately. This is
+// needed because loading a pattern copies automation data but does not itself
+// advance the sequencer to a step boundary.
+void sequencer_apply_loaded_pattern_parameters();
+
 // Write a parameter value into the automation lane at the current step.
 // Also enables the lane. Used when F1+pot is turned.
 void sequencer_write_automation_step(uint8_t lane, uint8_t value);

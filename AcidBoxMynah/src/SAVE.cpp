@@ -325,6 +325,12 @@ bool loadAcidBoxPattern(uint8_t bankNum, uint8_t songNum, uint8_t patternNum) {
     globalSeq.bpm = pf.bpm;
     globalSeq.swing = pf.swing;
 
+    // Loading a pattern updates the automation data, but does not itself
+    // cross a sequencer step boundary. Apply its saved synth/drum parameter
+    // state now so Synth1/Synth2 filters (especially cutoff) do not retain the
+    // previous pattern's live values until the next tick.
+    sequencer_apply_loaded_pattern_parameters();
+
     // Update the global bpm variable used by the jukebox
     bpm = pf.bpm;
     Delay.SetBPM(bpm);

@@ -202,6 +202,25 @@ void updateOLED()
         return;
     }
 
+    // ---- UI_PATTERN_SYNC: show OFF / LEADER / FOLLOWER ----
+    if (currentUiMode == UI_PATTERN_SYNC)
+    {
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 25);
+        u8g2.print("PAT SYNC");
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 45);
+        switch (midiPatternSyncRole())
+        {
+        case PATTERN_SYNC_LEADER:   u8g2.print("LEADER");   break;
+        case PATTERN_SYNC_FOLLOWER: u8g2.print("FOLLOWER"); break;
+        default:                    u8g2.print("OFF");     break;
+        }
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
     // ---- UI_PATTERN_SELECT mode ----
     if (currentUiMode == UI_PATTERN_SELECT)
     {

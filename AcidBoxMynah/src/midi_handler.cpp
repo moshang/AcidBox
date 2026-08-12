@@ -30,6 +30,16 @@ volatile bool midiClockSync = false;
 static volatile uint8_t midiClockOffsetMs = 0;
 static Preferences midiPreferences;
 
+// ---------- PATTERN SYNC (MYNAH-compatible channel 16 protocol) ----------
+// Bank 0-15 -> notes 1-16; song 0-15 -> notes 21-36; pattern 0-15 -> notes 41-56.
+static volatile uint8_t patternSyncRole = PATTERN_SYNC_OFF;
+static volatile bool patternSyncPending = false;
+static volatile uint8_t patternSyncRxBank = 0;
+static volatile uint8_t patternSyncRxSong = 0;
+static volatile uint8_t patternSyncTargetBank = 0;
+static volatile uint8_t patternSyncTargetSong = 0;
+static volatile uint8_t patternSyncTargetPattern = 0;
+
 static volatile uint8_t midiClockCount = 0;
 static uint32_t lastClockUs = 0;
 static uint64_t clockIntervalAccumUs = 0;
@@ -217,10 +227,17 @@ void MidiInit() {
   MIDI.setHandleActiveSensing([]() {});
   MIDI.turnThruOff();
   MIDI.begin(MIDI_CHANNEL_OMNI);
-  // OFFSET is a device setting, not pattern data. Keep it across reboots.
+  // MIDI configuration is device state, not pattern data. Keep it across reboots.
   midiPreferences.begin("acidbox", false);
+  clockSource = midiPreferences.getUChar("clock_src", CLOCK_SRC_INT);
+  if (clockSource != CLOCK_SRC_INT && clockSource != CLOCK_SRC_MIDI) {
+    clockSource = CLOCK_SRC_INT;
+  }
+  clockOut = midiPreferences.getUChar("clock_out", 0) ? 1 : 0;
   midiClockOffsetMs = midiPreferences.getUChar("offset_ms", 0);
   if (midiClockOffsetMs > 20) midiClockOffsetMs = 0;
+  patternSyncRole = midiPreferences.getUChar("pat_sync", PATTERN_SYNC_OFF);
+  if (patternSyncRole > PATTERN_SYNC_FOLLOWER) patternSyncRole = PATTERN_SYNC_OFF;
   resetMidiClockTracking();
 }
 
@@ -233,6 +250,54 @@ void midiClockService() {
   if ((int32_t)(micros() - pendingMidiStepDueUs) < 0) return;
   pendingMidiStep = false;
   dispatchMidiStep();
+}
+
+void midiPatternSyncService() {
+  if (!patternSyncPending) return;
+  patternSyncPending = false;
+  if (patternSyncRole != PATTERN_SYNC_FOLLOWER) return;
+  __sync_synchronize();
+
+  const uint8_t bank = patternSyncTargetBank;
+  const uint8_t song = patternSyncTargetSong;
+  const uint8_t pattern = patternSyncTargetPattern;
+  if (bank > 15 || song > 15 || pattern > 15) return;
+
+  if (!doesAcidBoxPatternExist(bank, song, pattern)) {
+    Serial.printf("[PAT SYNC] Pattern B%02d/S%02d/P%02d not found\n", bank + 1, song + 1, pattern + 1);
+    return;
+  }
+
+  // Remote selection is an explicit load, so discard the local unsaved edit just
+  // as the normal slot-selection path does when it loads an existing pattern.
+  if (loadAcidBoxPattern(bank, song, pattern)) {
+    refreshAcidBoxBankCache();
+    refreshAcidBoxSongCache();
+    refreshAcidBoxPatternCache();
+    currentUiMode = UI_NORMAL;
+    refreshOLED = true;
+    ledsDirty = true;
+    Serial.printf("[PAT SYNC] Loaded B%02d/S%02d/P%02d\n", bank + 1, song + 1, pattern + 1);
+  }
+}
+
+void midiPatternSyncSetRole(uint8_t role) {
+  if (role > PATTERN_SYNC_FOLLOWER) role = PATTERN_SYNC_OFF;
+  patternSyncRole = role;
+  if (patternSyncRole != PATTERN_SYNC_FOLLOWER) patternSyncPending = false;
+  midiPreferences.putUChar("pat_sync", patternSyncRole);
+}
+
+uint8_t midiPatternSyncRole() { return patternSyncRole; }
+
+void midiPatternSyncSend(uint8_t bank, uint8_t song, uint8_t pattern) {
+  if (patternSyncRole != PATTERN_SYNC_LEADER || bank > 15 || song > 15 || pattern > 15) return;
+  const uint8_t bankNote = bank + 1;
+  const uint8_t songNote = song + 21;
+  const uint8_t patternNote = pattern + 41;
+  MIDI.sendNoteOn(bankNote, 127, 16); MIDI.sendNoteOff(bankNote, 0, 16);
+  MIDI.sendNoteOn(songNote, 127, 16); MIDI.sendNoteOff(songNote, 0, 16);
+  MIDI.sendNoteOn(patternNote, 127, 16); MIDI.sendNoteOff(patternNote, 0, 16);
 }
 
 void midi_send_noteon(uint8_t chan, uint8_t note, uint8_t vol) {
@@ -260,6 +325,7 @@ void midiClockSetSource(uint8_t source) {
     if (wasInternalMaster && currentMode == MODE_JUKEBOX) Serial1.write(MIDI_STOP);
   }
   clockSource = source;
+  midiPreferences.putUChar("clock_src", clockSource);
   if (source == CLOCK_SRC_INT && clockOut && globalSeq.isPlaying) {
     midiClockTransportStart();
   }
@@ -270,6 +336,7 @@ void midiClockSetOutput(uint8_t enabled) {
     Serial1.write(MIDI_STOP);
   }
   clockOut = enabled ? 1 : 0;
+  midiPreferences.putUChar("clock_out", clockOut);
   if (!clockOut) {
     if (midiClockTimer != nullptr) esp_timer_stop(midiClockTimer);
     return;
@@ -317,6 +384,24 @@ void handleNoteOn(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity) {
   DEB("MIDI note on ");
   DEBUG(inNote);
 #endif
+  if (inChannel == 16 && patternSyncRole == PATTERN_SYNC_FOLLOWER) {
+    // Match MYNAH follower behavior: echo the channel-16 pair immediately so
+    // follower devices can be chained behind this unit.
+    MIDI.sendNoteOn(inNote, inVelocity, 16);
+    MIDI.sendNoteOff(inNote, 0, 16);
+    if (inNote >= 1 && inNote <= 16) {
+      patternSyncRxBank = inNote - 1;
+    } else if (inNote >= 21 && inNote <= 36) {
+      patternSyncRxSong = inNote - 21;
+    } else if (inNote >= 41 && inNote <= 56) {
+      patternSyncTargetBank = patternSyncRxBank;
+      patternSyncTargetSong = patternSyncRxSong;
+      patternSyncTargetPattern = inNote - 41;
+      __sync_synchronize();
+      patternSyncPending = true;
+    }
+    return;
+  }
   if (inChannel == DRUM_MIDI_CHAN )         {Drums.NoteOn(inNote, inVelocity);}
   else if (inChannel == SYNTH1_MIDI_CHAN )  {Synth1.on_midi_noteON(inNote, inVelocity);}
   else if (inChannel == SYNTH2_MIDI_CHAN )  {Synth2.on_midi_noteON(inNote, inVelocity);}
@@ -340,6 +425,10 @@ void handleNoteOn(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity) {
 }
 
 void handleNoteOff(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity) {
+  if (inChannel == 16 && patternSyncRole == PATTERN_SYNC_FOLLOWER) {
+    MIDI.sendNoteOff(inNote, 0, 16);
+    return;
+  }
   if (inChannel == DRUM_MIDI_CHAN )         {Drums.NoteOff(inNote);}
   else if (inChannel == SYNTH1_MIDI_CHAN )  {Synth1.on_midi_noteOFF(inNote, inVelocity);}
   else if (inChannel == SYNTH2_MIDI_CHAN )  {Synth2.on_midi_noteOFF(inNote, inVelocity);}

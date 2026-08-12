@@ -2,6 +2,11 @@
 #ifndef UI_H
 #define UI_H
 
+// MIDI channel-16 pattern synchronization roles.
+#define PATTERN_SYNC_OFF      0
+#define PATTERN_SYNC_LEADER   1
+#define PATTERN_SYNC_FOLLOWER 2
+
 // what are we editing? (synth1, synth2, drums, global)
 enum EditType {
   Syn1,
@@ -76,7 +81,8 @@ enum UiMode {
   UI_CLEARPATTERN,        // F8+F6: press once for "PATTERN / CLEAR [F6]" display, press F6 again to clear all pattern data
   UI_CLOCK_SRC,           // F8+V2 [1]: clock source (Internal / MIDI)
   UI_CLOCK_OUT,           // F8+V2 [2]: MIDI clock output (OFF / ON)
-  UI_CLOCK_OFFSET         // F8+V2 [3]: slave audio offset (0..20 ms)
+  UI_CLOCK_OFFSET,        // F8+V2 [3]: slave audio offset (0..20 ms)
+  UI_PATTERN_SYNC         // F8+V2 [4]: pattern sync (OFF / LEADER / FOLLOWER)
 };
 extern UiMode currentUiMode;
 

@@ -280,6 +280,20 @@ void handlePot(uint16_t potVal)
 		return;
 	}
 
+	// ---- PATTERN SYNC: OFF / LEADER / FOLLOWER ----
+	if (currentUiMode == UI_PATTERN_SYNC)
+	{
+		uint8_t role = (uint8_t)(((uint32_t)potVal * 3UL) / 4096UL);
+		if (role > PATTERN_SYNC_FOLLOWER) role = PATTERN_SYNC_FOLLOWER;
+		if (role != midiPatternSyncRole())
+		{
+			midiPatternSyncSetRole(role);
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
 	// ---- SWING mode: pot sets swing (0..100) ----
 	if (currentUiMode == UI_SWING)
 	{

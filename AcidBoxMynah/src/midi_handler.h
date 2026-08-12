@@ -21,6 +21,10 @@ bool midiClockIsSynchronized();
 uint8_t midiClockSource();
 uint8_t midiClockOutput();
 uint8_t midiClockOffset();
+void midiPatternSyncSetRole(uint8_t role);
+uint8_t midiPatternSyncRole();
+void midiPatternSyncService();
+void midiPatternSyncSend(uint8_t bank, uint8_t song, uint8_t pattern);
 
 // MIDI Event Handler Callbacks
 void handleNoteOn(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity);

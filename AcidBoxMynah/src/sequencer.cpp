@@ -258,6 +258,52 @@ void sequencer_apply_automation() {
 }
 
 // ============================================================
+// Apply loaded pattern parameters immediately
+// ============================================================
+void sequencer_apply_loaded_pattern_parameters() {
+  // A stopped sequencer starts on step 0 (sequencer_start sets currentStep to
+  // 15 before the first tick). While already playing, keep the current step so
+  // a pattern load does not jump the live parameter state to an unrelated bar.
+  const uint8_t step = globalSeq.isPlaying ? globalSeq.currentStep : 0;
+
+  // Reset cutoff interpolation targets so the next automation boundary starts
+  // from the newly loaded pattern instead of ramping from the old pattern.
+  cutoffInterp_1 = false;
+  cutoffInterp_2 = false;
+  cutoffInterp_d = false;
+
+  for (uint8_t lane = 0; lane < 16; lane++) {
+    if (globalSeq.autoSynth1.laneEnabled & (1 << lane)) {
+      const uint8_t value = globalSeq.autoSynth1.lanes[lane][step];
+      handleCC(SYNTH1_MIDI_CHAN, synthEditCC[lane], value);
+      if (lane == 0) {
+        cutoffFrom_1 = value;
+        cutoffTo_1 = value;
+      }
+    }
+    if (globalSeq.autoSynth2.laneEnabled & (1 << lane)) {
+      const uint8_t value = globalSeq.autoSynth2.lanes[lane][step];
+      handleCC(SYNTH2_MIDI_CHAN, synthEditCC[lane], value);
+      if (lane == 0) {
+        cutoffFrom_2 = value;
+        cutoffTo_2 = value;
+      }
+    }
+  }
+
+  for (uint8_t lane = 0; lane < 8; lane++) {
+    if (globalSeq.autoDrum.laneEnabled & (1 << lane)) {
+      const uint8_t value = globalSeq.autoDrum.lanes[lane][step];
+      handleCC(DRUM_MIDI_CHAN, drumEditCC[lane], value);
+      if (lane == 0) {
+        cutoffFrom_d = value;
+        cutoffTo_d = value;
+      }
+    }
+  }
+}
+
+// ============================================================
 // The main sequencer tick — called at each 16th-note boundary
 // Sends MIDI note-on/off for the current step's events.
 // ============================================================

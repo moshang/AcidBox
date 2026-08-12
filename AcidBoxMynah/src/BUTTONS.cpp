@@ -225,6 +225,15 @@ static void nudgeParam(int8_t direction)
 		refreshOLED = true;
 		ledsDirty = true;
 	}
+	else if (currentUiMode == UI_PATTERN_SYNC)
+	{
+		int role = (int)midiPatternSyncRole() + direction;
+		if (role < PATTERN_SYNC_OFF) role = PATTERN_SYNC_FOLLOWER;
+		if (role > PATTERN_SYNC_FOLLOWER) role = PATTERN_SYNC_OFF;
+		midiPatternSyncSetRole((uint8_t)role);
+		refreshOLED = true;
+		ledsDirty = true;
+	}
 }
 
 // ---------- FORWARD DECLARATIONS ----------
@@ -463,7 +472,7 @@ static bool handleF1Combos()
 		if (!isButtonPressed(BTN_F2)) suppressF2Release = false;
 		if (!isButtonPressed(BTN_F3) &&
 		    currentUiMode != UI_CLOCK_SRC && currentUiMode != UI_CLOCK_OUT &&
-		    currentUiMode != UI_CLOCK_OFFSET) {
+		    currentUiMode != UI_CLOCK_OFFSET && currentUiMode != UI_PATTERN_SYNC) {
 			suppressF3Release = false;
 		}
 		return false;
@@ -992,6 +1001,9 @@ static bool handleAcidBoxSelectModes()
                     if (loadCurrentPattern(slot))
                     {
                         Serial.printf("📂 Loaded pattern from slot %d\n", slot + 1);
+                        midiPatternSyncSend(acidBoxSaveLoad.currentBank,
+                                            acidBoxSaveLoad.currentSong,
+                                            acidBoxSaveLoad.currentPattern);
                     }
                 }
                 patternStepPressTime[slot] = 0;
@@ -1013,6 +1025,9 @@ static bool handleAcidBoxSelectModes()
                 acidBoxSaveLoad.currentSong = song;
                 refreshAcidBoxSongCache();
                 refreshAcidBoxPatternCache();
+                midiPatternSyncSend(acidBoxSaveLoad.currentBank,
+                                    acidBoxSaveLoad.currentSong,
+                                    acidBoxSaveLoad.currentPattern);
                 refreshOLED = true;
                 ledsDirty = true;
                 return true;
@@ -1031,6 +1046,9 @@ static bool handleAcidBoxSelectModes()
                 refreshAcidBoxBankCache();
                 refreshAcidBoxSongCache();
                 refreshAcidBoxPatternCache();
+                midiPatternSyncSend(acidBoxSaveLoad.currentBank,
+                                    acidBoxSaveLoad.currentSong,
+                                    acidBoxSaveLoad.currentPattern);
                 refreshOLED = true;
                 ledsDirty = true;
                 return true;
@@ -1136,6 +1154,7 @@ static bool handleF8ScaleRootCombos()
 		{
 			if (currentUiMode == UI_CLOCK_SRC) currentUiMode = UI_CLOCK_OUT;
 			else if (currentUiMode == UI_CLOCK_OUT) currentUiMode = UI_CLOCK_OFFSET;
+			else if (currentUiMode == UI_CLOCK_OFFSET) currentUiMode = UI_PATTERN_SYNC;
 			else currentUiMode = UI_CLOCK_SRC;
 			suppressF3Release = true;
 			suppressF8ReleaseInSelectMode = true;
@@ -1152,9 +1171,11 @@ static bool handleF8ScaleRootCombos()
 	// entering the mode is suppressed (it's the release that follows the F8+Step
 	// combo that entered the mode). Subsequent F8 releases toggle the sequencer.
 	if (isButtonJustReleased(BTN_F8) &&
-	    (currentUiMode == UI_PATTERN_SELECT || currentUiMode == UI_SONG_SELECT || currentUiMode == UI_BANK_SELECT ||
-	     currentUiMode == UI_BPM || currentUiMode == UI_SWING || currentUiMode == UI_MASTERVOL ||
-	     currentUiMode == UI_CLOCK_SRC || currentUiMode == UI_CLOCK_OUT || currentUiMode == UI_CLOCK_OFFSET))
+	    (currentUiMode == UI_PATTERN_SELECT || currentUiMode == UI_SONG_SELECT ||
+	     currentUiMode == UI_BANK_SELECT || currentUiMode == UI_BPM ||
+	     currentUiMode == UI_SWING || currentUiMode == UI_MASTERVOL ||
+	     currentUiMode == UI_CLOCK_SRC || currentUiMode == UI_CLOCK_OUT ||
+	     currentUiMode == UI_CLOCK_OFFSET || currentUiMode == UI_PATTERN_SYNC))
 	{
 		if (suppressF8ReleaseInSelectMode)
 		{
@@ -1278,7 +1299,7 @@ static bool handleF8ScaleRootCombos()
 	if (!isButtonPressed(BTN_F8))
 		return false;
 
-	// F8+V2 (F8+F3): open the MIDI clock settings pages.
+	// F8+V2 (F8+F3): open the MIDI clock and pattern sync settings pages.
 	if (isButtonJustPressed(BTN_F3))
 	{
 		currentUiMode = UI_CLOCK_SRC;

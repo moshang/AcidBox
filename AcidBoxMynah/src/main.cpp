@@ -269,6 +269,7 @@ void uiCoreTask(void* parameter) {
     updateButtons();
     processButtons();
     updatePot();
+    midiPatternSyncService();
 
     // === LOW-FREQUENCY DISPLAY UPDATES (decoupled round-robin) ===
     switch (slowPhase) {
