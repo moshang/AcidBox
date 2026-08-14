@@ -345,6 +345,23 @@ void handlePot(uint16_t potVal)
 		return;
 	}
 
+	// ---- Existing pattern confirmation: pot selects REPLACE or CLEAR ----
+	// The confirmation defaults to REPLACE.  Deliberately moving the pot into
+	// its upper half selects CLEAR; songs and banks remain CLEAR-only.
+	if (currentUiMode == UI_PATTERN_SELECT &&
+	    acidBoxClearConfirmType == ACIDBOX_CLEAR_PATTERN)
+	{
+		AcidBoxPatternConfirmAction newAction =
+		    (potVal >= 2048) ? ACIDBOX_PATTERN_CLEAR : ACIDBOX_PATTERN_REPLACE;
+		if (newAction != acidBoxPatternConfirmAction)
+		{
+			acidBoxPatternConfirmAction = newAction;
+			refreshOLED = true;
+			ledsDirty = true;
+		}
+		return;
+	}
+
 	// ---- PATTERN_SELECT / SONG_SELECT / BANK_SELECT modes: pot has no functionality ----
 	// The white highlight is strictly controlled by step button presses.
 	// The pot should be ignored in these modes.

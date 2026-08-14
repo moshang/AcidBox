@@ -74,10 +74,11 @@ void IRAM_ATTR mixer() { // sum buffers
       drums_out_l = drums_buf_l[current_out_buf][i];
       drums_out_r = drums_buf_r[current_out_buf][i];
 
-      synth1_out_l = Synth1.GetPan() * synth1_buf[current_out_buf][i];
-      synth1_out_r = (1.0f - Synth1.GetPan()) * synth1_buf[current_out_buf][i];
-      synth2_out_l = Synth2.GetPan() * synth2_buf[current_out_buf][i];
-      synth2_out_r = (1.0f - Synth2.GetPan()) * synth2_buf[current_out_buf][i];
+      // MIDI pan is 0 = hard left, 127 = hard right.
+      synth1_out_l = (1.0f - Synth1.GetPan()) * synth1_buf[current_out_buf][i];
+      synth1_out_r = Synth1.GetPan() * synth1_buf[current_out_buf][i];
+      synth2_out_l = (1.0f - Synth2.GetPan()) * synth2_buf[current_out_buf][i];
+      synth2_out_r = Synth2.GetPan() * synth2_buf[current_out_buf][i];
 
       
       dly_l = dly_k1 * synth1_out_l + dly_k2 * synth2_out_l + dly_k3 * drums_out_l; // delay bus

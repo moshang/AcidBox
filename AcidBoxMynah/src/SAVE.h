@@ -100,6 +100,12 @@ void refreshAcidBoxSongCache();
 bool saveAcidBoxPattern(uint8_t bankNum, uint8_t songNum, uint8_t patternNum);
 bool loadAcidBoxPattern(uint8_t bankNum, uint8_t songNum, uint8_t patternNum);
 
+// Delete saved AcidBox content. Pattern deletion removes one file; song and
+// bank deletion remove their complete directory trees.
+bool deleteAcidBoxPattern(uint8_t bankNum, uint8_t songNum, uint8_t patternNum);
+bool clearAcidBoxSong(uint8_t bankNum, uint8_t songNum);
+bool clearAcidBoxBank(uint8_t bankNum);
+
 // Get the current drum kit number from the Sampler
 uint8_t getCurrentDrumKitNumber();
 

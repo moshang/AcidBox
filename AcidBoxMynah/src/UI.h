@@ -86,6 +86,26 @@ enum UiMode {
 };
 extern UiMode currentUiMode;
 
+// Confirmation shown after a long-press on an existing saved item in one of
+// the AcidBox pattern/song/bank select modes.
+enum AcidBoxClearConfirmType {
+  ACIDBOX_CLEAR_NONE,
+  ACIDBOX_CLEAR_PATTERN,
+  ACIDBOX_CLEAR_SONG,
+  ACIDBOX_CLEAR_BANK
+};
+extern AcidBoxClearConfirmType acidBoxClearConfirmType;
+extern uint8_t acidBoxClearConfirmTarget; // step index 0-15 (A1-B8)
+
+// Pattern confirmation action.  Existing patterns default to REPLACE; moving
+// the pot to the second half of its range selects CLEAR.  Songs and banks
+// always use CLEAR and do not consult this action.
+enum AcidBoxPatternConfirmAction {
+  ACIDBOX_PATTERN_REPLACE,
+  ACIDBOX_PATTERN_CLEAR
+};
+extern AcidBoxPatternConfirmAction acidBoxPatternConfirmAction;
+
 void setEditType(EditType editType);
 void setSynthEditMode(SynthEditMode mode);
 void setDrumEditMode(DrumEditMode mode);

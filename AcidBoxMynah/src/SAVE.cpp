@@ -422,3 +422,104 @@ bool loadCurrentPattern(uint8_t patternNum) {
     }
     return result;
 }
+
+// ========================================
+// Delete / clear helpers
+// ========================================
+
+// Reset live pattern data when the item currently held in memory is deleted.
+// This mirrors MYNAH's working-memory behavior while retaining AcidBox's
+// zero-based currentPattern state.
+static void resetCurrentPatternAfterClear() {
+    sequencer_clear_part(Syn1);
+    sequencer_clear_part(Syn2);
+    sequencer_clear_part(Drm);
+    globalSeq.bpm = 130.0f;
+    globalSeq.swing = 0.0f;
+    bpm = globalSeq.bpm;
+    Delay.SetBPM(bpm);
+    midiClockBpmChanged(bpm);
+    acidBoxSaveLoad.currentPattern = 0;
+    acidBoxSaveLoad.modified = false;
+}
+
+bool deleteAcidBoxPattern(uint8_t bankNum, uint8_t songNum, uint8_t patternNum) {
+    if (!sdCardAvailable || bankNum > 15 || songNum > 15 || patternNum > 15)
+        return false;
+
+    char path[80];
+    getAcidBoxPatternPath(path, bankNum, songNum, patternNum);
+    if (SD_MMC.exists(path) && !SD_MMC.remove(path)) {
+        Serial.printf("❌ Failed to delete pattern file: %s\n", path);
+        return false;
+    }
+
+    if (acidBoxSaveLoad.currentBank == bankNum &&
+        acidBoxSaveLoad.currentSong == songNum &&
+        acidBoxSaveLoad.currentPattern == patternNum) {
+        resetCurrentPatternAfterClear();
+    }
+
+    refreshAcidBoxPatternCache();
+    return true;
+}
+
+// Remove all files in a song directory and then remove the empty directory.
+// This helper intentionally does not refresh caches or alter live state; the
+// public song/bank functions do that once the complete operation finishes.
+static bool clearAcidBoxSongFiles(uint8_t bankNum, uint8_t songNum) {
+    char songPath[64];
+    getAcidBoxSongPath(songPath, bankNum, songNum);
+    if (!SD_MMC.exists(songPath))
+        return true;
+
+    for (uint8_t pattern = 0; pattern < 16; pattern++) {
+        char path[80];
+        getAcidBoxPatternPath(path, bankNum, songNum, pattern);
+        if (SD_MMC.exists(path) && !SD_MMC.remove(path))
+            return false;
+    }
+
+    return SD_MMC.rmdir(songPath);
+}
+
+bool clearAcidBoxSong(uint8_t bankNum, uint8_t songNum) {
+    if (!sdCardAvailable || bankNum > 15 || songNum > 15)
+        return false;
+
+    if (!clearAcidBoxSongFiles(bankNum, songNum))
+        return false;
+
+    if (acidBoxSaveLoad.currentBank == bankNum &&
+        acidBoxSaveLoad.currentSong == songNum) {
+        resetCurrentPatternAfterClear();
+    }
+
+    refreshAcidBoxSongCache();
+    refreshAcidBoxPatternCache();
+    return true;
+}
+
+bool clearAcidBoxBank(uint8_t bankNum) {
+    if (!sdCardAvailable || bankNum > 15)
+        return false;
+
+    char bankPath[64];
+    getAcidBoxBankPath(bankPath, bankNum);
+    if (SD_MMC.exists(bankPath)) {
+        for (uint8_t song = 0; song < 16; song++) {
+            if (!clearAcidBoxSongFiles(bankNum, song))
+                return false;
+        }
+        if (!SD_MMC.rmdir(bankPath))
+            return false;
+    }
+
+    if (acidBoxSaveLoad.currentBank == bankNum)
+        resetCurrentPatternAfterClear();
+
+    refreshAcidBoxBankCache();
+    refreshAcidBoxSongCache();
+    refreshAcidBoxPatternCache();
+    return true;
+}

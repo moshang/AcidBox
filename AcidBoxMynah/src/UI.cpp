@@ -85,6 +85,9 @@ EditType currentEditType = Syn1;
 SynthEditMode currentEditMode = WaveEdit;
 DrumEditMode currentDrumEditMode = DrumCutoffEdit;
 UiMode currentUiMode = UI_NORMAL;
+AcidBoxClearConfirmType acidBoxClearConfirmType = ACIDBOX_CLEAR_NONE;
+uint8_t acidBoxClearConfirmTarget = 0;
+AcidBoxPatternConfirmAction acidBoxPatternConfirmAction = ACIDBOX_PATTERN_REPLACE;
 
 void setEditType(EditType voice)
 {

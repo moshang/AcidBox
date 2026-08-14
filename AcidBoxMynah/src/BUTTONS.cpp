@@ -815,6 +815,82 @@ static bool handleAcidBoxSelectModes()
     if (currentUiMode != UI_PATTERN_SELECT && currentUiMode != UI_SONG_SELECT && currentUiMode != UI_BANK_SELECT)
         return false;
 
+    // ---- CLEAR confirmation ----
+    // The long-pressed target remains held when this state is entered.  Do not
+    // confirm until it is released and pressed again; any other new button
+    // press cancels the operation.
+    if (acidBoxClearConfirmType != ACIDBOX_CLEAR_NONE)
+    {
+        uint8_t target = acidBoxClearConfirmTarget;
+        uint8_t targetButton = BTN_STEP_1 + target;
+
+        if (isButtonJustPressed(targetButton))
+        {
+            bool actionSucceeded = false;
+            switch (acidBoxClearConfirmType)
+            {
+            case ACIDBOX_CLEAR_PATTERN:
+                if (acidBoxPatternConfirmAction == ACIDBOX_PATTERN_REPLACE)
+                {
+                    actionSucceeded = saveCurrentPattern(target);
+                    Serial.printf("%s replaced pattern slot %d\n",
+                                  actionSucceeded ? "✓" : "❌", target + 1);
+                }
+                else
+                {
+                    actionSucceeded = deleteAcidBoxPattern(acidBoxSaveLoad.currentBank,
+                                                           acidBoxSaveLoad.currentSong,
+                                                           target);
+                    Serial.printf("%s cleared pattern slot %d\n",
+                                  actionSucceeded ? "✓" : "❌", target + 1);
+                }
+                break;
+            case ACIDBOX_CLEAR_SONG:
+                actionSucceeded = clearAcidBoxSong(acidBoxSaveLoad.currentBank, target);
+                break;
+            case ACIDBOX_CLEAR_BANK:
+                actionSucceeded = clearAcidBoxBank(target);
+                break;
+            default:
+                break;
+            }
+
+            if (acidBoxClearConfirmType != ACIDBOX_CLEAR_PATTERN)
+            {
+                Serial.printf("%s cleared slot %d (%c%d)\n",
+                              actionSucceeded ? "✓" : "❌", target + 1,
+                              target < 8 ? 'A' : 'B', (target % 8) + 1);
+            }
+            acidBoxClearConfirmType = ACIDBOX_CLEAR_NONE;
+            acidBoxPatternConfirmAction = ACIDBOX_PATTERN_REPLACE;
+            patternStepPressTime[target] = millis();
+            patternStepLongPressHandled[target] = true;
+            refreshOLED = true;
+            ledsDirty = true;
+            return true;
+        }
+
+        for (uint8_t button = 0; button < NUM_BUTTONS; button++)
+        {
+            if (button != targetButton && isButtonJustPressed(button))
+            {
+                acidBoxClearConfirmType = ACIDBOX_CLEAR_NONE;
+                acidBoxPatternConfirmAction = ACIDBOX_PATTERN_REPLACE;
+                if (button >= BTN_STEP_1 && button < BTN_STEP_1 + 16)
+                {
+                    uint8_t cancelledStep = button - BTN_STEP_1;
+                    patternStepPressTime[cancelledStep] = millis();
+                    patternStepLongPressHandled[cancelledStep] = true;
+                }
+                refreshOLED = true;
+                ledsDirty = true;
+                Serial.println("Clear cancelled");
+                return true;
+            }
+        }
+        return true;
+    }
+
     // ---- Exit conditions ----
     // F1+Step (any step): user is selecting a synth/drum edit mode → exit
     if (isButtonPressed(BTN_F1))
@@ -911,6 +987,8 @@ static bool handleAcidBoxSelectModes()
             suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
             refreshAcidBoxSongCache();
             refreshAcidBoxPatternCache();
+            patternStepPressTime[1] = millis();
+            patternStepLongPressHandled[1] = true;
             refreshOLED = true;
             ledsDirty = true;
             return true;
@@ -922,6 +1000,8 @@ static bool handleAcidBoxSelectModes()
             refreshAcidBoxBankCache();
             refreshAcidBoxSongCache();
             refreshAcidBoxPatternCache();
+            patternStepPressTime[2] = millis();
+            patternStepLongPressHandled[2] = true;
             refreshOLED = true;
             ledsDirty = true;
             return true;
@@ -974,17 +1054,23 @@ static bool handleAcidBoxSelectModes()
                 return true;
             }
 
-            // Long-press: save pattern to this slot
+            // Long-press: clear an existing pattern, or save into an empty slot
             if (isButtonPressed(i) && !patternStepLongPressHandled[slot] &&
                 (now - patternStepPressTime[slot] >= PATTERN_LONG_PRESS_MS))
             {
                 patternStepLongPressHandled[slot] = true;
-                // Save current pattern to this slot
-                if (saveCurrentPattern(slot))
+                if (acidBoxSaveLoad.patternExistsCache[slot])
+                {
+                    acidBoxClearConfirmType = ACIDBOX_CLEAR_PATTERN;
+                    acidBoxClearConfirmTarget = slot;
+                    acidBoxPatternConfirmAction = ACIDBOX_PATTERN_REPLACE;
+                    potLock();
+                    Serial.printf("Clear confirmation for pattern slot %d\n", slot + 1);
+                }
+                else if (saveCurrentPattern(slot))
                 {
                     Serial.printf("💾 Saved pattern to slot %d (A%d/B%d)\n",
-                                  slot + 1,
-                                  slot < 8 ? slot + 1 : slot - 7,
+                                  slot + 1, slot < 8 ? slot + 1 : slot - 7,
                                   slot < 8 ? 0 : 1);
                 }
                 refreshOLED = true;
@@ -1016,18 +1102,46 @@ static bool handleAcidBoxSelectModes()
     }
     else if (currentUiMode == UI_SONG_SELECT)
     {
-        // Step button: select song (A1-A8 = songs 0-7, B1-B8 = songs 8-15)
+        // Step button: select song, or long-press an existing song to clear it
         for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
         {
+            uint8_t song = i - BTN_STEP_1;
+
             if (isButtonJustPressed(i))
             {
-                uint8_t song = i - BTN_STEP_1;
-                acidBoxSaveLoad.currentSong = song;
-                refreshAcidBoxSongCache();
-                refreshAcidBoxPatternCache();
-                midiPatternSyncSend(acidBoxSaveLoad.currentBank,
-                                    acidBoxSaveLoad.currentSong,
-                                    acidBoxSaveLoad.currentPattern);
+                patternStepPressTime[song] = now;
+                patternStepLongPressHandled[song] = false;
+                refreshOLED = true;
+                ledsDirty = true;
+                return true;
+            }
+
+            if (isButtonPressed(i) && !patternStepLongPressHandled[song] &&
+                (now - patternStepPressTime[song] >= PATTERN_LONG_PRESS_MS) &&
+                acidBoxSaveLoad.songExistsCache[song])
+            {
+                patternStepLongPressHandled[song] = true;
+                acidBoxClearConfirmType = ACIDBOX_CLEAR_SONG;
+                acidBoxClearConfirmTarget = song;
+                potLock();
+                refreshOLED = true;
+                ledsDirty = true;
+                return true;
+            }
+
+            if (isButtonJustReleased(i))
+            {
+                if (!patternStepLongPressHandled[song])
+                {
+                    acidBoxSaveLoad.currentSong = song;
+                    refreshAcidBoxSongCache();
+                    refreshAcidBoxPatternCache();
+                    midiPatternSyncSend(acidBoxSaveLoad.currentBank,
+                                        acidBoxSaveLoad.currentSong,
+                                        acidBoxSaveLoad.currentPattern);
+                }
+                patternStepPressTime[song] = 0;
+                patternStepLongPressHandled[song] = false;
                 refreshOLED = true;
                 ledsDirty = true;
                 return true;
@@ -1036,19 +1150,47 @@ static bool handleAcidBoxSelectModes()
     }
     else if (currentUiMode == UI_BANK_SELECT)
     {
-        // Step button: select bank (A1-A8 = banks 0-7, B1-B8 = banks 8-15)
+        // Step button: select bank, or long-press an existing bank to clear it
         for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
         {
+            uint8_t bank = i - BTN_STEP_1;
+
             if (isButtonJustPressed(i))
             {
-                uint8_t bank = i - BTN_STEP_1;
-                acidBoxSaveLoad.currentBank = bank;
-                refreshAcidBoxBankCache();
-                refreshAcidBoxSongCache();
-                refreshAcidBoxPatternCache();
-                midiPatternSyncSend(acidBoxSaveLoad.currentBank,
-                                    acidBoxSaveLoad.currentSong,
-                                    acidBoxSaveLoad.currentPattern);
+                patternStepPressTime[bank] = now;
+                patternStepLongPressHandled[bank] = false;
+                refreshOLED = true;
+                ledsDirty = true;
+                return true;
+            }
+
+            if (isButtonPressed(i) && !patternStepLongPressHandled[bank] &&
+                (now - patternStepPressTime[bank] >= PATTERN_LONG_PRESS_MS) &&
+                acidBoxSaveLoad.bankExistsCache[bank])
+            {
+                patternStepLongPressHandled[bank] = true;
+                acidBoxClearConfirmType = ACIDBOX_CLEAR_BANK;
+                acidBoxClearConfirmTarget = bank;
+                potLock();
+                refreshOLED = true;
+                ledsDirty = true;
+                return true;
+            }
+
+            if (isButtonJustReleased(i))
+            {
+                if (!patternStepLongPressHandled[bank])
+                {
+                    acidBoxSaveLoad.currentBank = bank;
+                    refreshAcidBoxBankCache();
+                    refreshAcidBoxSongCache();
+                    refreshAcidBoxPatternCache();
+                    midiPatternSyncSend(acidBoxSaveLoad.currentBank,
+                                        acidBoxSaveLoad.currentSong,
+                                        acidBoxSaveLoad.currentPattern);
+                }
+                patternStepPressTime[bank] = 0;
+                patternStepLongPressHandled[bank] = false;
                 refreshOLED = true;
                 ledsDirty = true;
                 return true;
@@ -1355,6 +1497,8 @@ static bool handleF8ScaleRootCombos()
 		potLock(); // Lock pot to prevent parameter jumps
 		refreshAcidBoxSongCache();
 		refreshAcidBoxPatternCache();
+        patternStepPressTime[1] = millis();
+        patternStepLongPressHandled[1] = true;
 		suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
 		refreshOLED = true;
 		ledsDirty = true;
@@ -1369,6 +1513,8 @@ static bool handleF8ScaleRootCombos()
 		refreshAcidBoxBankCache();
 		refreshAcidBoxSongCache();
 		refreshAcidBoxPatternCache();
+        patternStepPressTime[2] = millis();
+        patternStepLongPressHandled[2] = true;
 		suppressF8ReleaseInSelectMode = true; // suppress the imminent F8 release
 		refreshOLED = true;
 		ledsDirty = true;

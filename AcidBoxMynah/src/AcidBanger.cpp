@@ -109,7 +109,7 @@ sSynthCCs synth1_ramps[NUM_SYNTH_CCS] = {
 #ifndef NO_PSRAM
   {CC_303_REVERB_SEND, 0,              5,    2,  127,  true},
 #endif
-  {CC_303_PAN,        0,              47,   0,  127,  true},
+  {CC_303_PAN,        0,              64,   0,  127,  true},
   {CC_303_WAVEFORM,   0,              0,    0,  64,   true}, // SQUARE
   {CC_303_RESO,       CC_303_CUTOFF,  64,   40, 125,  true},
   {CC_303_CUTOFF,     CC_303_RESO,    30,   0,  127,  true},
@@ -129,7 +129,7 @@ sSynthCCs synth2_ramps[NUM_SYNTH_CCS] = {
 #endif
   {CC_303_RESO,       CC_303_CUTOFF,  64,   60, 127,  true},
   {CC_303_CUTOFF,     CC_303_RESO,    20,   0,  100,  false},
-  {CC_303_PAN,        0,              80,   0,  127,  true},
+  {CC_303_PAN,        0,              64,   0,  127,  true},
   {CC_303_ENVMOD_LVL, 0,              100,  15, 127,  false},
   {CC_303_WAVEFORM,   0,              127,  64, 127,  true}, // SAW
   {CC_303_DELAY_SEND, 0,              0,    64, 127,  false},
@@ -1050,8 +1050,8 @@ static void decide_on_break() {
 // regains full control of all synth/drum parameters.
 // (Identical to the CC initializations in do_midi_start().)
 void jukebox_reset_parameters() {
-  send_midi_control(SYNTH1_MIDI_CHAN, 10, 10);
-  send_midi_control(SYNTH2_MIDI_CHAN, 10, 117);
+  send_midi_control(SYNTH1_MIDI_CHAN, CC_303_PAN, 64);
+  send_midi_control(SYNTH2_MIDI_CHAN, CC_303_PAN, 64);
   send_midi_control(SYNTH1_MIDI_CHAN, 74, 64);
   send_midi_control(SYNTH2_MIDI_CHAN, 74, 40);
   send_midi_control(SYNTH1_MIDI_CHAN, 70, 127); // saw

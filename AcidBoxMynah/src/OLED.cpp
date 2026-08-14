@@ -221,6 +221,37 @@ void updateOLED()
         return;
     }
 
+    // ---- Saved item clear confirmation ----
+    // The target index maps directly to the physical step labels A1-A8/B1-B8.
+    if (acidBoxClearConfirmType != ACIDBOX_CLEAR_NONE)
+    {
+        char stepLabel[12];
+        uint8_t target = acidBoxClearConfirmTarget;
+        snprintf(stepLabel, sizeof(stepLabel), "%c%d: OK",
+                 target < 8 ? 'A' : 'B', (target % 8) + 1);
+
+        u8g2.setFont(u8g2_font_helvB14_tf);
+        u8g2.setCursor(0, 22);
+        if (acidBoxClearConfirmType == ACIDBOX_CLEAR_PATTERN &&
+            acidBoxPatternConfirmAction == ACIDBOX_PATTERN_REPLACE)
+        {
+            u8g2.print("REPLACE?");
+        }
+        else
+        {
+            u8g2.print("CLEAR?");
+        }
+        u8g2.setFont(u8g2_font_helvB10_tf);
+        u8g2.setCursor(0, 40);
+        u8g2.print(stepLabel);
+        u8g2.setCursor(0, 55);
+        u8g2.print("Any: Cancel");
+
+        u8g2.sendBuffer();
+        refreshOLED = false;
+        return;
+    }
+
     // ---- UI_PATTERN_SELECT mode ----
     if (currentUiMode == UI_PATTERN_SELECT)
     {
