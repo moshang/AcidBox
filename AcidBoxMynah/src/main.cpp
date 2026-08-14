@@ -29,6 +29,7 @@
 #include "compressor.h"
 #include "synthvoice.h"
 #include "sampler.h"
+#include "noise_fx_voice.h"
 #include <Wire.h>
 #include "soc/rtc_cntl_reg.h"
 #include <FS.h>
@@ -59,7 +60,7 @@ float norm2_tbl[16][16]; // wavefolder-overdrive gain compensation
 //static float (*tables[])[TABLE_SIZE+1] = {&exp_square_tbl, &square_tbl, &saw_tbl, &exp_tbl};
 
 // service variables and arrays
-volatile uint32_t s1t, s2t, drt, fxt, s1T, s2T, drT, fxT, art, arT, c0t, c0T, c1t, c1T; // debug timing: if we use less vars, compiler optimizes them
+volatile uint32_t s1t, s2t, drt, swt, fxt, s1T, s2T, drT, swT, fxT, art, arT, c0t, c0T, c1t, c1T; // debug timing: if we use less vars, compiler optimizes them
 volatile uint32_t prescaler;
 uint32_t  last_reset = 0;
 float     param[POT_NUM];
@@ -77,10 +78,11 @@ bool sdCardAvailable = false;
 volatile bool ledsDirty = true;
 bool refreshOLED = false;
 
-// Voice mute state (toggled by double-click on F2/F3/F4)
+// Voice mute state (toggled by double-click on F2/F3/F4/F7)
 bool muteSynth1 = false;
 bool muteSynth2 = false;
 bool muteDrums = false;
+bool muteSweep = false;
 
 // Audio buffers of all kinds
 volatile uint8_t current_gen_buf = 0; // set of buffers for generation
@@ -89,6 +91,8 @@ float synth1_buf[2][DMA_BUF_LEN];    // synth1 mono
 float synth2_buf[2][DMA_BUF_LEN];    // synth2 mono
 float drums_buf_l[2][DMA_BUF_LEN];   // drums L
 float drums_buf_r[2][DMA_BUF_LEN];   // drums R
+float sweep_buf_l[2][DMA_BUF_LEN];   // sweep FX L
+float sweep_buf_r[2][DMA_BUF_LEN];   // sweep FX R
 float mix_buf_l[2][DMA_BUF_LEN];     // mix L channel
 float mix_buf_r[2][DMA_BUF_LEN];     // mix R channel
 out_buf_u out_buf[2];                               // i2s L+R output buffer
@@ -111,6 +115,7 @@ SynthVoice Synth2(1); // instance 1 to recognize from the inside
 
 // 808-like drums
 Sampler Drums( DEFAULT_DRUMKIT ); // argument: starting drumset [0 .. total-1]
+NoiseFxVoice Sweep;
 
 // Global effects
 FxDelay Delay;
@@ -178,6 +183,10 @@ void IRAM_ATTR audio_task1(void *userData) {
       drums_generate();
       drT = micros() - drt;
 
+      swt = micros();
+      sweep_generate();
+      swT = micros() - swt;
+
     }
     
    // taskYIELD();
@@ -222,8 +231,7 @@ void IRAM_ATTR audio_task2(void *userData) {
 #endif
         
 #ifdef DEBUG_TIMING
-        DEBF ("synt1=%dus synt2=%dus drums=%dus mixer=%dus DMA_BUF=%dus\r\n" , s1T, s2T, drT, fxT, DMA_BUF_TIME);
-        //    DEBF ("TaskCore0=%dus TaskCore1=%dus DMA_BUF=%dus\r\n" , c0T , c1T , DMA_BUF_TIME);
+        DEBF ("synt1=%dus synt2=%dus drums=%dus sweep=%dus mixer=%dus core0=%dus core1=%dus DMA_BUF=%dus\r\n" , s1T, s2T, drT, swT, fxT, c0T, c1T, DMA_BUF_TIME);
         //    DEBF ("AllTheRestCore1=%dus\r\n" , arT);
 #endif
     }    

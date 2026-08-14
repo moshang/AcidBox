@@ -2,6 +2,7 @@
 #include "config.h"
 #include "general.h"
 #include "sampler.h"
+#include "noise_fx_voice.h"
 #include "sequencer.h"
 #include "SCALES.h"
 #include "UI.h"
@@ -106,10 +107,11 @@ void updateButtons()
 }
 
 // ---------- DOUBLE-CLICK DETECTION ----------
-// Tracks the last release time for F2/F3/F4 to detect double-clicks.
+// Tracks the last release time for voice-select buttons to detect double-clicks.
 static uint32_t lastF2Release = 0;
 static uint32_t lastF3Release = 0;
 static uint32_t lastF4Release = 0;
+static uint32_t lastF7Release = 0;
 static const uint32_t DOUBLE_CLICK_MS = 300; // max ms between clicks to count as double-click
 
 // Returns true if a double-click is detected for the given button.
@@ -121,6 +123,7 @@ static bool isDoubleClick(uint8_t buttonNum) {
         case BTN_F2: lastRelease = &lastF2Release; break;
         case BTN_F3: lastRelease = &lastF3Release; break;
         case BTN_F4: lastRelease = &lastF4Release; break;
+        case BTN_F7: lastRelease = &lastF7Release; break;
         default: return false;
     }
     uint32_t elapsed = now - *lastRelease;
@@ -239,6 +242,7 @@ static void nudgeParam(int8_t direction)
 // ---------- FORWARD DECLARATIONS ----------
 static bool handleStandaloneDrumSteps();
 static bool handleStandaloneSynthSteps();
+static bool handleF7SweepSteps();
 static bool handleF1Combos();
 static bool handleF4DrumLaneCombos();
 static bool handleKitStepCombos();
@@ -272,6 +276,13 @@ void processButtons()
 
 	// F6 full pattern generation (all parts)
 	if (handleF6PatternGen())
+	{
+		return;
+	}
+
+	// F7+STEP is the live-only sweep trigger bank. It must run before the
+	// standalone sequencer step handlers so no pattern data is changed.
+	if (handleF7SweepSteps())
 	{
 		return;
 	}
@@ -322,6 +333,71 @@ void processButtons()
 	}
 
 	handleFunctionButtons();
+}
+
+// ==================== LIVE SWEEP FX HANDLER ====================
+// F7+A1..B8 triggers one of the 16 procedural FX presets.  No sequencer or
+// save data is touched.  Releasing F7 selects the SWEEP edit page.
+static bool f7StepUsed = false;
+
+static bool handleF7SweepSteps()
+{
+	if (isButtonPressed(BTN_F7))
+	{
+		for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+		{
+			if (isButtonJustPressed(i))
+			{
+				Sweep.Trigger((uint8_t)(i - BTN_STEP_1));
+				setEditType(Fx);
+				f7StepUsed = true;
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
+		}
+	}
+
+	// Once the SWEEP page is selected, the 16 step buttons are the soundboard
+	// triggers by themselves.  Keep this separate from the F7-held shortcut so
+	// entering the page does not require the user to keep holding F7.
+	if (currentEditType == Fx &&
+		!isButtonPressed(BTN_F1) && !isButtonPressed(BTN_F2) &&
+		!isButtonPressed(BTN_F3) && !isButtonPressed(BTN_F4) &&
+		!isButtonPressed(BTN_F5) && !isButtonPressed(BTN_F6) &&
+		!isButtonPressed(BTN_F7) && !isButtonPressed(BTN_F8))
+	{
+		for (uint8_t i = BTN_STEP_1; i < BTN_STEP_1 + 16; i++)
+		{
+			if (isButtonJustPressed(i))
+			{
+				Sweep.Trigger((uint8_t)(i - BTN_STEP_1));
+				refreshOLED = true;
+				ledsDirty = true;
+				return true;
+			}
+		}
+	}
+
+	if (isButtonJustReleased(BTN_F7))
+	{
+		if (f7StepUsed)
+		{
+			f7StepUsed = false;
+		}
+		else if (isDoubleClick(BTN_F7))
+		{
+			muteSweep = !muteSweep;
+			refreshOLED = true;
+		}
+		else
+		{
+			setEditType(Fx);
+		}
+		return true;
+	}
+
+	return false;
 }
 
 // Track the currently held step for synth editing (-1 = none)
@@ -525,6 +601,13 @@ static bool handleF1Combos()
 				// Drums: F1+A1-A8 sets drum edit mode
 				setDrumEditMode((DrumEditMode)(i - BTN_STEP_1));
 			}
+			else if (currentEditType == Fx)
+			{
+				// Sweep: A6-A8 control its implemented sends/volume.  The other
+				// parameter buttons are still selectable so their unsupported
+				// state is shown as a blank second OLED line.
+				setSynthEditMode((SynthEditMode)(i - BTN_STEP_1));
+			}
 			return false; // don't block F8 release
 		}
 	}
@@ -547,7 +630,7 @@ static bool handleF1Combos()
 }
 
 // ==================== FUNCTION BUTTON HANDLER ====================
-// Handles F2/F3/F4 releases: switch to Syn1/Syn2/Drm edit type.
+// Handles F2/F3/F4/F7 releases: switch edit type.
 // Double-click toggles mute for the corresponding voice.
 // Nudge suppression flags prevent edit-type switches when F2/F3 were used
 // in F1+F2 / F1+F3 nudge combos.
@@ -613,6 +696,13 @@ static void handleFunctionButtons()
 			setEditType(Drm);
 		}
 	}
+
+	if (isButtonJustReleased(BTN_F7))
+	{
+		// F7's trigger/release behavior is handled in handleF7SweepSteps().
+		// This fallback is intentionally empty to avoid double-processing the
+		// release when that handler has already consumed it.
+	}
 }
 
 // ==================== F5 PART GENERATION (current part only) ====================
@@ -627,6 +717,11 @@ static bool handleF5PartGen()
         isButtonPressed(BTN_F3) || isButtonPressed(BTN_F4) ||
         isButtonPressed(BTN_F6) || isButtonPressed(BTN_F7) ||
         isButtonPressed(BTN_F8))
+        return false;
+
+    // SWEEP is deliberately live-only; it has no pattern part to generate or
+    // clear and must never be routed through the save/pattern workflow.
+    if (currentEditType == Fx)
         return false;
 
     if (isButtonJustPressed(BTN_F5))

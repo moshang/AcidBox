@@ -2,6 +2,7 @@
 #include "config.h"
 #include "general.h"
 #include "sampler.h"
+#include "noise_fx_voice.h"
 #include "midi_handler.h"
 #include "sequencer.h"
 #include "SCALES.h"
@@ -435,6 +436,58 @@ void handlePot(uint16_t potVal)
 		midiCC = drumEditCC[currentDrumEditMode];
 		lane = (uint8_t)currentDrumEditMode;
 		break;
+	case Fx:
+		// Sweep controls are live-only, except for the explicit cutoff handoff.
+		{
+			float value = (float)potVal / 4095.0f;
+			EditType cutoffVoice = Global;
+			uint8_t cutoffChannel = 0;
+
+			if (sweepCutoffTarget == SweepCutoffSynth1)
+			{
+				cutoffVoice = Syn1;
+				cutoffChannel = SYNTH1_MIDI_CHAN;
+			}
+			else if (sweepCutoffTarget == SweepCutoffSynth2)
+			{
+				cutoffVoice = Syn2;
+				cutoffChannel = SYNTH2_MIDI_CHAN;
+			}
+			else if (sweepCutoffTarget == SweepCutoffDrums)
+			{
+				cutoffVoice = Drm;
+				cutoffChannel = DRUM_MIDI_CHAN;
+			}
+
+			if (cutoffVoice != Global)
+			{
+				const uint8_t ccVal = (uint8_t)(value * 127.0f);
+				handleCC(cutoffChannel,
+				         cutoffVoice == Drm ? CC_808_CUTOFF : CC_303_CUTOFF,
+				         ccVal);
+
+				// Keep sequencer automation in sync with the live cutoff. Without
+				// this, the next step boundary reapplies the previous saved value.
+				if (currentMode == MODE_EDIT)
+				{
+					if (isButtonPressed(BTN_F1))
+						sequencer_write_automation_step_for_voice(cutoffVoice, 0, ccVal);
+					else
+						sequencer_write_automation_all_steps_for_voice(cutoffVoice, 0, ccVal);
+				}
+			}
+			else if (currentEditMode == DelayEdit)
+				Sweep.SetDelaySend(value);
+			else if (currentEditMode == ReverbEdit)
+				Sweep.SetReverbSend(value);
+			else if (currentEditMode == VolumeEdit)
+				Sweep.SetVolume(value);
+			else
+				return;
+
+			refreshOLED = true;
+			return;
+		}
 	default:
 		return; // No action for other modes
 	}

@@ -171,10 +171,12 @@ void sequencer_apply_loaded_pattern_parameters();
 // Write a parameter value into the automation lane at the current step.
 // Also enables the lane. Used when F1+pot is turned.
 void sequencer_write_automation_step(uint8_t lane, uint8_t value);
+void sequencer_write_automation_step_for_voice(EditType type, uint8_t lane, uint8_t value);
 
 // Write a parameter value to all 16 steps of the automation lane.
 // Also enables the lane. Used when pot is turned without F1 held.
 void sequencer_write_automation_all_steps(uint8_t lane, uint8_t value);
+void sequencer_write_automation_all_steps_for_voice(EditType type, uint8_t lane, uint8_t value);
 
 // Clear all pattern and automation data for a given part (Syn1, Syn2, or Drm)
 void sequencer_clear_part(EditType part);

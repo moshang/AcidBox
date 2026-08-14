@@ -45,10 +45,11 @@ static uint32_t lastClockUs = 0;
 static uint64_t clockIntervalAccumUs = 0;
 static uint8_t clockIntervalsMeasured = 0;
 static uint32_t lastClockPeriodUs = 0;
-// The MIDI clock boundary remains at the UART arrival time. This deadline
-// delays only AcidBox voice triggering; clock counting, tempo measurement,
-// and optional clock-thru remain phase-accurate.
-static volatile bool pendingMidiStep = false;
+// The MIDI clock boundary remains at the UART arrival time. These deadlines
+// delay only AcidBox voice triggering; clock counting, tempo measurement, and
+// optional clock-thru remain phase-accurate. Step dispatch is deferred out of
+// the MIDI parser callback so note handling cannot block incoming clock bytes.
+static volatile uint8_t pendingMidiStepCount = 0;
 static uint32_t pendingMidiStepDueUs = 0;
 
 // ---------- Absolute-deadline MIDI clock output ----------
@@ -91,7 +92,7 @@ static void resetMidiClockTracking() {
   lastClockUs = 0;
   clockIntervalAccumUs = 0;
   lastClockPeriodUs = 0;
-  pendingMidiStep = false;
+  pendingMidiStepCount = 0;
 }
 
 static void dispatchMidiStep() {
@@ -101,14 +102,6 @@ static void dispatchMidiStep() {
 
 static void handleMidiClock() {
   if (clockSource != CLOCK_SRC_MIDI || !midiClockSync) return;
-
-  // If the main loop was briefly busy and a swung step became due before
-  // this next incoming clock byte, commit it first so the pending step cannot
-  // be overwritten by the next boundary calculation.
-  if (pendingMidiStep && (int32_t)(micros() - pendingMidiStepDueUs) >= 0) {
-    pendingMidiStep = false;
-    dispatchMidiStep();
-  }
 
   const uint32_t nowUs = micros();
   if (lastClockUs != 0) {
@@ -132,15 +125,14 @@ static void handleMidiClock() {
           : (uint32_t)(15000000.0f / max(1.0f, globalSeq.bpm));
       const uint32_t delayUs = (uint32_t)(straightStepUs * globalSeq.swing / 200.0f);
       const uint32_t offsetUs = (uint32_t)midiClockOffsetMs * 1000UL;
-      pendingMidiStepDueUs = nowUs + offsetUs + delayUs;
-      pendingMidiStep = true;
+      const uint32_t dueUs = nowUs + offsetUs + delayUs;
+      if (pendingMidiStepCount < 8) pendingMidiStepCount++;
+      if (pendingMidiStepCount == 1) pendingMidiStepDueUs = dueUs;
     } else {
       const uint32_t offsetUs = (uint32_t)midiClockOffsetMs * 1000UL;
-      if (offsetUs == 0) dispatchMidiStep();
-      else {
-        pendingMidiStepDueUs = nowUs + offsetUs;
-        pendingMidiStep = true;
-      }
+      const uint32_t dueUs = nowUs + offsetUs;
+      if (pendingMidiStepCount < 8) pendingMidiStepCount++;
+      if (pendingMidiStepCount == 1) pendingMidiStepDueUs = dueUs;
     }
   }
 
@@ -178,11 +170,8 @@ static void handleMidiStart() {
   // Keep MIDI Start immediate for transport semantics; delay only the first
   // generated voice step by the configured slave audio offset.
   const uint32_t offsetUs = (uint32_t)midiClockOffsetMs * 1000UL;
-  if (offsetUs == 0) dispatchMidiStep();
-  else {
-    pendingMidiStepDueUs = micros() + offsetUs;
-    pendingMidiStep = true;
-  }
+  pendingMidiStepCount = 1;
+  pendingMidiStepDueUs = micros() + offsetUs;
 }
 
 static void handleMidiStop() {
@@ -246,10 +235,16 @@ void midi_read() {
 }
 
 void midiClockService() {
-  if (!pendingMidiStep || !midiClockSync) return;
-  if ((int32_t)(micros() - pendingMidiStepDueUs) < 0) return;
-  pendingMidiStep = false;
-  dispatchMidiStep();
+  if (!midiClockSync) return;
+
+  // Dispatch outside MIDI.read()/the real-time callback. If the main loop was
+  // briefly busy, catch up queued 16th notes without dropping the transport.
+  while (pendingMidiStepCount > 0 &&
+         (int32_t)(micros() - pendingMidiStepDueUs) >= 0) {
+    pendingMidiStepCount--;
+    dispatchMidiStep();
+    pendingMidiStepDueUs = micros();
+  }
 }
 
 void midiPatternSyncService() {
@@ -314,7 +309,7 @@ void midiClockSetSource(uint8_t source) {
 
   const bool wasInternalMaster = (clockSource == CLOCK_SRC_INT && clockOut);
   if (midiClockTimer != nullptr) esp_timer_stop(midiClockTimer);
-  pendingMidiStep = false;
+  pendingMidiStepCount = 0;
   if (source == CLOCK_SRC_MIDI) {
     midiClockSync = false;
     resetMidiClockTracking();

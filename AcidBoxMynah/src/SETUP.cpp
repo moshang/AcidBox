@@ -11,6 +11,7 @@
 #include "compressor.h"
 #include "synthvoice.h"
 #include "sampler.h"
+#include "noise_fx_voice.h"
 #include <Wire.h>
 #include "soc/rtc_cntl_reg.h"
 #include <FS.h>
@@ -119,6 +120,8 @@ void setup(void) {
   Synth2.Init();
   Serial.println("Initializing Drums...");
   Drums.Init();
+  Serial.println("Initializing Sweep FX...");
+  Sweep.Init();
   // Scan /ACIDBOX/KITS/ directories at startup (one-time cost during boot)
   // so entering KITS browser mode at runtime is instant with zero SD access.
   Drums.ScanKitDirectories();
@@ -144,6 +147,8 @@ void setup(void) {
   for (int i = 0; i < DMA_BUF_LEN; i++) {
     drums_buf_l[current_gen_buf][i] = 0.0f ;
     drums_buf_r[current_gen_buf][i] = 0.0f ;
+    sweep_buf_l[current_gen_buf][i] = 0.0f ;
+    sweep_buf_r[current_gen_buf][i] = 0.0f ;
     synth1_buf[current_gen_buf][i] = 0.0f ;
     synth2_buf[current_gen_buf][i] = 0.0f ;
     out_buf[current_out_buf]._signed[i * 2] = 0 ;

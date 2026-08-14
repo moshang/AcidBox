@@ -4,6 +4,7 @@
 #include "config.h"
 #include "general.h"
 #include "sampler.h"
+#include "noise_fx_voice.h"
 #include "UI.h"
 #include "sequencer.h"
 #include "SCALES.h"
@@ -413,6 +414,31 @@ void updateOLED()
         else
         {
             u8g2.print(drumEditModeNames[currentDrumEditMode]);
+        }
+    }
+    else if (currentEditType == Fx)
+    {
+        switch (sweepCutoffTarget)
+        {
+        case SweepCutoffSynth1:
+            u8g2.print("CUTOFF S1");
+            break;
+        case SweepCutoffSynth2:
+            u8g2.print("CUTOFF S2");
+            break;
+        case SweepCutoffDrums:
+            u8g2.print("CUTOFF D");
+            break;
+        case SweepCutoffNone:
+            if (currentEditMode == DelayEdit ||
+                currentEditMode == ReverbEdit ||
+                currentEditMode == VolumeEdit)
+            {
+                u8g2.print(synthEditModeNames[currentEditMode]);
+            }
+            // Unsupported Sweep parameters intentionally leave line two
+            // empty.  The buffer was cleared at the start of this frame.
+            break;
         }
     }
     else

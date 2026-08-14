@@ -13,6 +13,7 @@
 // Forward declare the classes so we can use pointers/references
 class SynthVoice;
 class Sampler;
+class NoiseFxVoice;
 class FxDelay;
 class FxReverb;
 class Compressor;
@@ -21,6 +22,7 @@ class Compressor;
 void drums_generate();
 void synth1_generate();
 void synth2_generate();
+void sweep_generate();
 void IRAM_ATTR mixer();
 
 // Easing
@@ -106,15 +108,16 @@ extern volatile bool ledsDirty;
 extern bool refreshOLED;
 extern EditType currentEditType;
 extern SynthEditMode currentEditMode;
-extern const char* editTypeNames[4];
+extern const char* editTypeNames[5];
 extern const char* synthEditModeNames[16];
-extern const uint8_t midiChn[4];
+extern const uint8_t midiChn[5];
 extern const uint8_t synthEditCC[16];
 
 // Voice mute state (toggled by double-click on F2/F3/F4)
 extern bool muteSynth1;
 extern bool muteSynth2;
 extern bool muteDrums;
+extern bool muteSweep;
 
 // Pot-used-with-F-key flags (suppress F-key release actions after pot adjustment)
 extern bool f2PotUsed;
@@ -127,6 +130,7 @@ extern float masterVolume;
 
 // Shared instances and variables
 extern Sampler Drums;
+extern NoiseFxVoice Sweep;
 extern SynthVoice Synth1;
 extern SynthVoice Synth2;
 extern FxDelay Delay;
@@ -147,6 +151,8 @@ extern float synth1_buf[2][DMA_BUF_LEN];
 extern float synth2_buf[2][DMA_BUF_LEN];
 extern float drums_buf_l[2][DMA_BUF_LEN];
 extern float drums_buf_r[2][DMA_BUF_LEN];
+extern float sweep_buf_l[2][DMA_BUF_LEN];
+extern float sweep_buf_r[2][DMA_BUF_LEN];
 extern float mix_buf_l[2][DMA_BUF_LEN];
 extern float mix_buf_r[2][DMA_BUF_LEN];
 

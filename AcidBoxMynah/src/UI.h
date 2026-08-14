@@ -12,10 +12,21 @@ enum EditType {
   Syn1,
   Syn2,
   Drm,
-  Global
+  Global,
+  Fx
 };
 
-extern const char* editTypeNames[4];
+// When Sweep is selected after a cutoff parameter, the pot continues to
+// control the cutoff of the voice that was being edited.  All other
+// parameters are intentionally unavailable on the Sweep page.
+enum SweepCutoffTarget {
+  SweepCutoffNone,
+  SweepCutoffSynth1,
+  SweepCutoffSynth2,
+  SweepCutoffDrums
+};
+
+extern const char* editTypeNames[5];
 
 // Synth edit modes
 // Enum order matches button positions (F1+A1=0, F1+A2=1, ... F1+B1=8, F1+B2=9, ...)
@@ -56,6 +67,7 @@ extern const char* drumEditModeNames[8];
 extern const uint8_t drumEditCC[8];
 
 extern DrumEditMode currentDrumEditMode;
+extern SweepCutoffTarget sweepCutoffTarget;
 
 // Drum lane switching (F4+STEP in sequencer mode)
 extern const char* drumLaneNames[16];

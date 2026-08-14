@@ -2,6 +2,7 @@
 #include "general.h"
 #include "synthvoice.h"
 #include "sampler.h"
+#include "noise_fx_voice.h"
 
 float bpm = 130.0f;
 float masterVolume = 1.0f;
@@ -51,6 +52,19 @@ void synth2_generate() {
     } 
 }
 
+void sweep_generate() {
+    if (muteSweep) {
+        for (int i = 0; i < DMA_BUF_LEN; i++) {
+            sweep_buf_l[current_gen_buf][i] = 0.0f;
+            sweep_buf_r[current_gen_buf][i] = 0.0f;
+        }
+        return;
+    }
+    for (int i = 0; i < DMA_BUF_LEN; i++) {
+        Sweep.Process(&sweep_buf_l[current_gen_buf][i], &sweep_buf_r[current_gen_buf][i]);
+    }
+}
+
 float easeInExpo(float x) {
     return (x == 0.0f) ? 0.0f : std::exp2f(10.0f * x - 10.0f);
 }
@@ -60,19 +74,24 @@ void IRAM_ATTR mixer() { // sum buffers
   static float meter = 0.0f;
 #endif
   static float synth1_out_l, synth1_out_r, synth2_out_l, synth2_out_r, drums_out_l, drums_out_r;
+  static float sweep_out_l, sweep_out_r;
   static float dly_l, dly_r, rvb_l, rvb_r;
   static float mono_mix;
     dly_k1 = Synth1._sendDelay;
     dly_k2 = Synth2._sendDelay;
     dly_k3 = Drums._sendDelay;
+    const float dly_k4 = Sweep._sendDelay;
 #ifndef NO_PSRAM 
     rvb_k1 = Synth1._sendReverb;
     rvb_k2 = Synth2._sendReverb;
     rvb_k3 = Drums._sendReverb;
+    const float rvb_k4 = Sweep._sendReverb;
 #endif
     for (int i=0; i < DMA_BUF_LEN; i++) { 
       drums_out_l = drums_buf_l[current_out_buf][i];
       drums_out_r = drums_buf_r[current_out_buf][i];
+      sweep_out_l = sweep_buf_l[current_out_buf][i];
+      sweep_out_r = sweep_buf_r[current_out_buf][i];
 
       // MIDI pan is 0 = hard left, 127 = hard right.
       synth1_out_l = (1.0f - Synth1.GetPan()) * synth1_buf[current_out_buf][i];
@@ -81,19 +100,19 @@ void IRAM_ATTR mixer() { // sum buffers
       synth2_out_r = Synth2.GetPan() * synth2_buf[current_out_buf][i];
 
       
-      dly_l = dly_k1 * synth1_out_l + dly_k2 * synth2_out_l + dly_k3 * drums_out_l; // delay bus
-      dly_r = dly_k1 * synth1_out_r + dly_k2 * synth2_out_r + dly_k3 * drums_out_r;
+      dly_l = dly_k1 * synth1_out_l + dly_k2 * synth2_out_l + dly_k3 * drums_out_l + dly_k4 * sweep_out_l; // delay bus
+      dly_r = dly_k1 * synth1_out_r + dly_k2 * synth2_out_r + dly_k3 * drums_out_r + dly_k4 * sweep_out_r;
       Delay.Process( &dly_l, &dly_r );
 #ifndef NO_PSRAM
-      rvb_l = rvb_k1 * synth1_out_l + rvb_k2 * synth2_out_l + rvb_k3 * drums_out_l; // reverb bus
-      rvb_r = rvb_k1 * synth1_out_r + rvb_k2 * synth2_out_r + rvb_k3 * drums_out_r;
+      rvb_l = rvb_k1 * synth1_out_l + rvb_k2 * synth2_out_l + rvb_k3 * drums_out_l + rvb_k4 * sweep_out_l; // reverb bus
+      rvb_r = rvb_k1 * synth1_out_r + rvb_k2 * synth2_out_r + rvb_k3 * drums_out_r + rvb_k4 * sweep_out_r;
       Reverb.Process( &rvb_l, &rvb_r );
 
-      mix_buf_l[current_out_buf][i] = (synth1_out_l + synth2_out_l + drums_out_l + dly_l + rvb_l);
-      mix_buf_r[current_out_buf][i] = (synth1_out_r + synth2_out_r + drums_out_r + dly_r + rvb_r);
+      mix_buf_l[current_out_buf][i] = (synth1_out_l + synth2_out_l + drums_out_l + sweep_out_l + dly_l + rvb_l);
+      mix_buf_r[current_out_buf][i] = (synth1_out_r + synth2_out_r + drums_out_r + sweep_out_r + dly_r + rvb_r);
 #else
-      mix_buf_l[current_out_buf][i] = (synth1_out_l + synth2_out_l + drums_out_l + dly_l);
-      mix_buf_r[current_out_buf][i] = (synth1_out_r + synth2_out_r + drums_out_r + dly_r);
+      mix_buf_l[current_out_buf][i] = (synth1_out_l + synth2_out_l + drums_out_l + sweep_out_l + dly_l);
+      mix_buf_r[current_out_buf][i] = (synth1_out_r + synth2_out_r + drums_out_r + sweep_out_r + dly_r);
 #endif
       mono_mix = 0.5f * (mix_buf_l[current_out_buf][i] + mix_buf_r[current_out_buf][i]);
   //    Comp.Process(mono_mix);     // calculate gain based on a mono mix

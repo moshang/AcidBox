@@ -5,6 +5,7 @@
 #include "midi_config.h"
 #include "synthvoice.h"
 #include "sampler.h"
+#include "noise_fx_voice.h"
 #include "SAVE.h"
 
 // ============================================================
@@ -79,6 +80,9 @@ static void sequencer_all_notes_off() {
 
   // Drum voices — stop all active sample players immediately
   Drums.allNotesOff();
+  // The sweep voice is live-only, but stopping transport/mode must still
+  // silence any synced swell that is currently active.
+  Sweep.Stop();
 
   // Reset last note tracking
   lastNote1 = 0;
@@ -318,6 +322,10 @@ uint32_t sequencer_tick() {
   }
   globalSeq.currentStep = nextStep;
 
+  // Notify live-only A-bank sweep presets at the exact same step boundary as
+  // the sequenced voices.  No FX pattern data is read or written here.
+  Sweep.OnSequencerStep(globalSeq.currentStep);
+
   // --- Apply automation for THIS step (before playing notes) ---
   sequencer_apply_automation();
 
@@ -535,6 +543,7 @@ void sequencer_service() {
     } else {
       // We've fallen too far behind — reset timing and advance silently
       globalSeq.currentStep = (globalSeq.currentStep + 1) & 0x0F;
+      Sweep.OnSequencerStep(globalSeq.currentStep);
       
       // Recalculate nextTickIntervalUs to match the skipped step's swing timing
       uint32_t baseInterval = calc_16th_interval_us(globalSeq.bpm);
@@ -619,12 +628,13 @@ void sequencer_clear_part(EditType part) {
 // Automation recording
 // ============================================================
 
-// Write the current parameter value into the automation lane at the current step.
-// Used when F1+pot is detected (per-step recording).
-void sequencer_write_automation_step(uint8_t lane, uint8_t value) {
+// Write a parameter value into a selected voice's automation lane at the
+// current step.  The voice is explicit because Sweep can edit the cutoff of a
+// synth/drum voice while currentEditType remains Fx.
+void sequencer_write_automation_step_for_voice(EditType type, uint8_t lane, uint8_t value) {
   if (globalSeq.currentStep >= 16) return;
 
-  switch (currentEditType) {
+  switch (type) {
     case Syn1:
       globalSeq.autoSynth1.lanes[lane][globalSeq.currentStep] = value;
       globalSeq.autoSynth1.laneEnabled |= (1 << lane);
@@ -645,10 +655,10 @@ void sequencer_write_automation_step(uint8_t lane, uint8_t value) {
   acidBoxSaveLoad.modified = true;
 }
 
-// Write the current parameter value to ALL 16 steps of the automation lane.
-// Used when pot is turned without F1 held (global fill).
-void sequencer_write_automation_all_steps(uint8_t lane, uint8_t value) {
-  switch (currentEditType) {
+// Write a parameter value to ALL 16 steps of a selected voice's automation
+// lane. The voice is explicit because Sweep can edit another voice's cutoff.
+void sequencer_write_automation_all_steps_for_voice(EditType type, uint8_t lane, uint8_t value) {
+  switch (type) {
     case Syn1:
       for (uint8_t i = 0; i < 16; i++) {
         globalSeq.autoSynth1.lanes[lane][i] = value;
@@ -673,6 +683,18 @@ void sequencer_write_automation_all_steps(uint8_t lane, uint8_t value) {
       break;
   }
   acidBoxSaveLoad.modified = true;
+}
+
+// Write the current parameter value into the current voice's automation lane
+// at the current step. Used when F1+pot is detected (per-step recording).
+void sequencer_write_automation_step(uint8_t lane, uint8_t value) {
+  sequencer_write_automation_step_for_voice(currentEditType, lane, value);
+}
+
+// Write a parameter value to ALL 16 steps of the current voice's automation
+// lane. Used when pot is turned without F1 held (global fill).
+void sequencer_write_automation_all_steps(uint8_t lane, uint8_t value) {
+  sequencer_write_automation_all_steps_for_voice(currentEditType, lane, value);
 }
 
 // ============================================================
@@ -819,7 +841,6 @@ void sequencer_set_synth_step_note(uint8_t step, uint8_t note, EditType type) {
   }
   
   SynthStep& s = pattern->steps[step];
-  uint8_t oldNote = s.note;
   s.note = note;
   s.active = true; // Always force the step active when adjusting pitch via pot
   

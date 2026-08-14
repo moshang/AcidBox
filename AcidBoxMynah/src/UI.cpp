@@ -2,11 +2,12 @@
 #include "general.h"
 #include "UI.h"
 
-const char* editTypeNames[4] = {
+const char* editTypeNames[5] = {
     "SYNTH1", 
     "SYNTH2", 
     "DRUMS",
-    "GLOBAL"
+    "GLOBAL",
+    "SWEEP"
 };
 
 const char* synthEditModeNames[16] = {
@@ -73,17 +74,19 @@ const char* drumLaneNames[16] = {
 uint16_t currentDrumLane = 1 << 0;      // default: BD
 uint8_t  currentDrumLaneIndex = 0;      // default: 0 = BD
 
-const uint8_t midiChn[4]
+const uint8_t midiChn[5]
 {
     SYNTH1_MIDI_CHAN,
     SYNTH2_MIDI_CHAN,
     DRUM_MIDI_CHAN,
-    99
+    99,
+    99 // live-only procedural FX has no MIDI pattern channel
 };
 
 EditType currentEditType = Syn1;
 SynthEditMode currentEditMode = WaveEdit;
 DrumEditMode currentDrumEditMode = DrumCutoffEdit;
+SweepCutoffTarget sweepCutoffTarget = SweepCutoffNone;
 UiMode currentUiMode = UI_NORMAL;
 AcidBoxClearConfirmType acidBoxClearConfirmType = ACIDBOX_CLEAR_NONE;
 uint8_t acidBoxClearConfirmTarget = 0;
@@ -91,6 +94,34 @@ AcidBoxPatternConfirmAction acidBoxPatternConfirmAction = ACIDBOX_PATTERN_REPLAC
 
 void setEditType(EditType voice)
 {
+    // Sweep has no synth/drum parameter pages of its own.  Preserve a cutoff
+    // handoff only when entering Sweep from a voice whose cutoff is selected.
+    // This lets the pot keep editing that voice while Sweep remains selected.
+    if (voice == Fx && currentEditType != Fx)
+    {
+        if ((currentEditType == Syn1 || currentEditType == Syn2) &&
+            currentEditMode == CutoffEdit)
+        {
+            sweepCutoffTarget = currentEditType == Syn1
+                                     ? SweepCutoffSynth1
+                                     : SweepCutoffSynth2;
+        }
+        else if (currentEditType == Drm &&
+                 currentDrumEditMode == DrumCutoffEdit)
+        {
+            sweepCutoffTarget = SweepCutoffDrums;
+        }
+        else
+        {
+            sweepCutoffTarget = SweepCutoffNone;
+        }
+    }
+    else if (voice != Fx)
+    {
+        // The handoff is only valid while the Sweep page is selected.
+        sweepCutoffTarget = SweepCutoffNone;
+    }
+
     // Lock the pot whenever the edit type changes
     // This prevents the parameter value from jumping when the pot
     // position doesn't match the new mode's current parameter value.
@@ -106,6 +137,13 @@ void setSynthEditMode(SynthEditMode mode )
     potLock();
 
     currentEditMode = mode;
+    // Selecting any synth parameter on the Sweep page exits the special
+    // cutoff handoff.  Delay, reverb, and volume are handled normally by the
+    // Sweep pot path; unsupported parameters simply remain blank/inactive.
+    if (currentEditType == Fx)
+    {
+        sweepCutoffTarget = SweepCutoffNone;
+    }
     refreshOLED = true;
 }
 
