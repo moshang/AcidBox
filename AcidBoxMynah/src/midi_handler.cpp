@@ -3,6 +3,7 @@
 #include "general.h"
 #include "synthvoice.h"
 #include "sampler.h"
+#include "noise_fx_voice.h"
 #include "fx_delay.h"
 #ifndef NO_PSRAM
 #include "fx_reverb.h"
@@ -397,6 +398,16 @@ void handleNoteOn(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity) {
     }
     return;
   }
+  // Sweep is a live-only, trigger-based voice. Match the 1-based note
+  // numbering used by the pattern-sync protocol: MIDI notes 1..16 select
+  // presets A1..B8 (preset indices 0..15). A Note On with velocity zero is
+  // the MIDI equivalent of Note Off and must not retrigger the preset.
+  if (inChannel == SWEEP_MIDI_CHAN) {
+    if (inVelocity > 0 && inNote >= 1 && inNote <= 16) {
+      Sweep.Trigger((uint8_t)(inNote - 1));
+    }
+    return;
+  }
   if (inChannel == DRUM_MIDI_CHAN )         {Drums.NoteOn(inNote, inVelocity);}
   else if (inChannel == SYNTH1_MIDI_CHAN )  {Synth1.on_midi_noteON(inNote, inVelocity);}
   else if (inChannel == SYNTH2_MIDI_CHAN )  {Synth2.on_midi_noteON(inNote, inVelocity);}
@@ -424,6 +435,8 @@ void handleNoteOff(uint8_t inChannel, uint8_t inNote, uint8_t inVelocity) {
     MIDI.sendNoteOff(inNote, 0, 16);
     return;
   }
+  // Sweep presets are one-shot/clock-synchronised triggers, not held notes.
+  if (inChannel == SWEEP_MIDI_CHAN) return;
   if (inChannel == DRUM_MIDI_CHAN )         {Drums.NoteOff(inNote);}
   else if (inChannel == SYNTH1_MIDI_CHAN )  {Synth1.on_midi_noteOFF(inNote, inVelocity);}
   else if (inChannel == SYNTH2_MIDI_CHAN )  {Synth2.on_midi_noteOFF(inNote, inVelocity);}
