@@ -21,6 +21,9 @@ bool isPotLocked() {
     return potLocked;
 }
 static uint16_t potLockPos = 0;          // pot position at lock time
+static uint16_t filteredPotVal = 0;       // filtered ADC value used for lock comparisons
+static bool potSamplesInitialized = false;
+static uint8_t unlockCandidateCount = 0;
 
 // Step pitch edit state
 static int8_t lastEditedStep = -1;     // which step we last edited with the pot (-1 = none)
@@ -47,46 +50,72 @@ bool f8PotUsed = false;
 void potLock()
 {
     potLocked = true;
-    // Use the current pot value as the lock reference to prevent jumps
-    uint32_t sum = 0;
-    for (uint8_t i = 0; i < 8; i++)
-    {
-        sum += potValAvg[i];
-    }
-    uint16_t currentPotVal = sum >> 3;
+    // Use the current filtered/real ADC value as the lock reference.
+    const uint16_t currentPotVal = potSamplesInitialized ? filteredPotVal : (uint16_t)analogRead(POT_PIN);
     potLockPos = currentPotVal;
+    unlockCandidateCount = 0;
     potUnlocked = 0;          // also clear the normal unlock timer
 }
 
 // ---------- UPDATE POTENTIOMETER ----------
 void updatePot()
 {
-	potValAvg[potAvgIndex] = analogRead(POT_PIN);
-	potAvgIndex = (potAvgIndex + 1) % 8;
+    const bool firstSample = !potSamplesInitialized;
+    const uint16_t rawPotVal = (uint16_t)analogRead(POT_PIN);
+    if (!potSamplesInitialized)
+    {
+        for (uint8_t i = 0; i < 8; i++) potValAvg[i] = rawPotVal;
+        potSamplesInitialized = true;
+    }
+    else
+    {
+        potValAvg[potAvgIndex] = rawPotVal;
+    }
+    potAvgIndex = (potAvgIndex + 1) % 8;
 
-	// Calculate average
-	uint32_t sum = 0;
-	for (uint8_t i = 0; i < 8; i++)
-	{
-		sum += potValAvg[i];
-	}
-	uint16_t potVal = sum >> 3;
+    // Trim one extreme sample at each end to reject a single ADC spike.
+    uint32_t sum = 0;
+    uint16_t minVal = 4095;
+    uint16_t maxVal = 0;
+    for (uint8_t i = 0; i < 8; i++)
+    {
+        const uint16_t sample = potValAvg[i];
+        sum += sample;
+        if (sample < minVal) minVal = sample;
+        if (sample > maxVal) maxVal = sample;
+    }
+    filteredPotVal = (uint16_t)((sum - minVal - maxVal) / 6);
+    const uint16_t potVal = filteredPotVal;
+
+    if (firstSample)
+    {
+        lastPotVal = potVal;
+        return;
+    }
 
 	// If pot is locked (due to a mode change), check if it has moved enough to unlock
 	if (potLocked)
 	{
-		int16_t movement = abs((int)potVal - (int)potLockPos);
-		if (movement > POT_LOCK_THRESHOLD)
-		{
-			// Unlock: the user has deliberately moved the pot past the threshold
-			potLocked = false;
-			lastPotVal = potVal;
-			potUnlocked = 50; // POT_LOCK_TIME equivalent
-			ledsDirty = true;
-			handlePot(potVal);
-		}
-		// If still locked, do nothing (ignore the pot entirely)
-		return;
+        const int16_t movement = abs((int)potVal - (int)potLockPos);
+        if (movement > POT_LOCK_THRESHOLD)
+        {
+            // Require four consecutive filtered readings to reject an isolated spike.
+            if (++unlockCandidateCount >= 4)
+            {
+                potLocked = false;
+                unlockCandidateCount = 0;
+                lastPotVal = potVal;
+                potUnlocked = 50; // POT_LOCK_TIME equivalent
+                ledsDirty = true;
+                handlePot(potVal);
+            }
+        }
+        else
+        {
+            unlockCandidateCount = 0;
+        }
+        // If still locked, do nothing (ignore the pot entirely)
+        return;
 	}
 
 	// Normal operation: check if pot moved enough to trigger update

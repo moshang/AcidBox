@@ -23,7 +23,7 @@
 // ========================================
 
 #define ACIDBOX_SAVE_MAGIC   0x41424F58  // 'ABOX'
-#define ACIDBOX_SAVE_VERSION 3
+#define ACIDBOX_SAVE_VERSION 4
 
 // Binary file format for a single pattern slot
 struct __attribute__((packed)) AcidBoxPatternFile {

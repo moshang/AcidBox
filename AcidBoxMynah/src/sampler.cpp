@@ -25,8 +25,62 @@
 
 //#define DEBUG_SAMPLER
 
+struct EmbeddedSampleRef {
+    size_t size;
+    const uint8_t* data;
+};
+
+// Keep the original fallback order intact. Slots 10 and 11 repeat the first
+// two fallback sounds; the four new slots 12..15 repeat fallback slots 0..3.
+// This preserves the old sounds in slots 0..9 and gives every UI lane audio.
+static const EmbeddedSampleRef kEmbeddedSamples[] = {
+    { s01_sz, s01 },  // 001_BD.wav
+    { s02_sz, s02 },  // 002_SD.wav
+    { s00_sz, s00 },  // 003_.wav (empty)
+    { s00_sz, s00 },  // 004_.wav (empty)
+    { s05_sz, s05 },  // 005_CB.wav
+    { s00_sz, s00 },  // 006_.wav (empty)
+    { s07_sz, s07 },  // 007_CH.wav
+    { s08_sz, s08 },  // 008_OH.wav
+    { s00_sz, s00 },  // 009_.wav (empty)
+    { s10_sz, s10 },  // 010_CR.wav
+};
+static const uint8_t kEmbeddedSampleCount =
+    sizeof(kEmbeddedSamples) / sizeof(kEmbeddedSamples[0]);
+
+static uint8_t fallbackSlot(uint8_t slot) {
+    if (slot < kEmbeddedSampleCount) return slot;
+    if (slot < 12) return slot - 10;
+    return slot - 12;
+}
+
+bool Sampler::LoadEmbeddedSample(uint8_t slot, size_t &buffPointer, size_t cacheLimit) {
+    const EmbeddedSampleRef &embedded = kEmbeddedSamples[fallbackSlot(slot)];
+    const size_t headerSize = 44;
+    if (embedded.size < headerSize || buffPointer > cacheLimit ||
+        embedded.size - headerSize > cacheLimit - buffPointer) {
+        return false;
+    }
+
+    union wavHeader wav;
+    memcpy(wav.wavHdr, embedded.data, sizeof(wav.wavHdr));
+    const size_t pcmSize = embedded.size - sizeof(wav.wavHdr);
+    samplePlayer[slot].sampleStart = buffPointer;
+    memcpy(&RamCache[buffPointer], embedded.data + sizeof(wav.wavHdr), pcmSize);
+    buffPointer += pcmSize;
+    samplePlayer[slot].sampleRate = wav.sampleRate;
+    samplePlayer[slot].sampleSize = min((size_t)wav.dataSize, pcmSize);
+    samplePlayer[slot].sampleSeek = 0xFFFFFFFF;
+    return samplePlayer[slot].sampleSize > 0;
+}
+
 void Sampler::LoadEmbeddedSamples() {
-    size_t toRead = 0, oldPointer = 0, buffPointer = 0;
+    size_t buffPointer = 0;
+#ifndef NO_PSRAM
+    const size_t cacheLimit = PSRAM_SAMPLER_CACHE;
+#else
+    const size_t cacheLimit = RAM_SAMPLER_CACHE;
+#endif
 
     // Allocate PSRAM / RAM buffer if not already done
 #ifndef NO_PSRAM
@@ -61,53 +115,32 @@ void Sampler::LoadEmbeddedSamples() {
     }
 #endif
 
-    // Build a table of embedded samples: { size, data_ptr, name }
-    struct EmbeddedSample {
-        size_t size;
-        const uint8_t* data;
-    };
-
-    EmbeddedSample embeddedSamples[] = {
-        { s01_sz, s01 },  // 001_BD.wav
-        { s02_sz, s02 },  // 002_SD.wav
-        { s00_sz, s00 },  // 003_.wav (empty)
-        { s00_sz, s00 },  // 004_.wav (empty)
-        { s05_sz, s05 },  // 005_CB.wav
-        { s00_sz, s00 },  // 006_.wav (empty)
-        { s07_sz, s07 },  // 007_CH.wav
-        { s08_sz, s08 },  // 008_OH.wav
-        { s00_sz, s00 },  // 009_.wav (empty)
-        { s10_sz, s10 },  // 010_CR.wav
-    };
-    const int embeddedCount = sizeof(embeddedSamples) / sizeof(embeddedSamples[0]);
-
-    sampleInfoCount = embeddedCount;
-
-    for (int i = 0; i < embeddedCount; i++) {
-        union wavHeader wav;
-        memcpy(&(wav.wavHdr[0]), embeddedSamples[i].data, sizeof(wav.wavHdr));
-
-        // Copy PCM data into RamCache (skip the 44-byte WAV header)
-        size_t pcmSize = embeddedSamples[i].size - sizeof(wav.wavHdr);
-        if (buffPointer + pcmSize > PSRAM_SAMPLER_CACHE) {
-            DEBF("PSRAM overflow! Truncating at sample %d\n", i);
+    sampleInfoCount = DRUM_SLOT_COUNT;
+    for (uint8_t i = 0; i < DRUM_SLOT_COUNT; i++) {
+        if (!LoadEmbeddedSample(i, buffPointer, cacheLimit)) {
             sampleInfoCount = i;
             break;
         }
-
-        samplePlayer[i].sampleStart = buffPointer;
-        oldPointer = buffPointer;
-        memcpy(&(RamCache[buffPointer]), embeddedSamples[i].data + sizeof(wav.wavHdr), pcmSize);
-        buffPointer += pcmSize;
-
-        wav.dataSize = min((size_t)wav.dataSize, pcmSize);
-
-        samplePlayer[i].sampleRate = wav.sampleRate;
-        samplePlayer[i].sampleSize = wav.dataSize;
-        samplePlayer[i].sampleSeek = 0xFFFFFFFF;
     }
 }
 
+bool Sampler::IsNumericKitFile(const String &path, uint8_t &slot) const {
+  int slash = path.lastIndexOf('/');
+  String name = slash >= 0 ? path.substring(slash + 1) : path;
+  // New direct-slot files use exactly two digits followed by "_":
+  // 01_BD.wav through 16_Tamb.wav. Requiring the separator prevents an
+  // old filename such as 010_OldKit.wav becoming new-format slot 01.
+  if (name.length() < 4 || name.charAt(2) != '_' ||
+      name.charAt(0) < '0' || name.charAt(0) > '9' ||
+      name.charAt(1) < '0' || name.charAt(1) > '9') {
+    return false;
+  }
+  int number = (name.charAt(0) - '0') * 10 +
+               (name.charAt(1) - '0');
+  if (number < 1 || number > DRUM_SLOT_COUNT) return false;
+  slot = (uint8_t)(number - 1);
+  return true;
+}
 void Sampler::ScanContents(fs::FS &fs, const char *dirname, uint8_t levels) {
   String str;
 #ifdef DEBUG_SAMPLER
@@ -143,23 +176,114 @@ void Sampler::ScanContents(fs::FS &fs, const char *dirname, uint8_t levels) {
       DEBUG(file.size());
 #endif
 
-      if ( sampleInfoCount < SAMPLECNT ) {
-        str = (String)(file.name());
-        str = (String)dirname + "/" + str;
-        const size_t pathCap = sizeof(filenames[sampleInfoCount]);
-        if (str.length() >= pathCap) {
-          Serial.printf("[Sampler] Skipping too-long path (%u >= %u): %s\n",
-                        (unsigned)str.length(), (unsigned)pathCap, str.c_str());
-        } else {
-          strncpy(filenames[sampleInfoCount], str.c_str(), pathCap - 1);
-          filenames[sampleInfoCount][pathCap - 1] = '\0';
-          sampleInfoCount++;
-        }
+      str = (String)dirname + "/" + (String)(file.name());
+      uint8_t numericSlot = 0;
+      if (IsNumericKitFile(str, numericSlot) &&
+          (numericKitMask & (1U << numericSlot)) == 0) {
+        numericKitFiles[numericSlot] = str;
+        numericKitMask |= (1U << numericSlot);
+      }
+      if (legacyKitFileCount < SAMPLECNT) {
+        legacyKitFiles[legacyKitFileCount++] = str;
       }
     }
     delay(1);
     file = root.openNextFile();
   }
+}
+
+void Sampler::PrepareKitSampleSlots() {
+  memset(filenames, 0, sizeof(filenames));
+  sampleInfoCount = 0;
+  directSlotKit = (numericKitMask != 0);
+
+  // Numeric prefixes are authoritative whenever at least one 001..016 file
+  // exists. Missing numbered slots remain empty and receive fallback audio.
+  if (numericKitMask != 0) {
+    for (uint8_t slot = 0; slot < DRUM_SLOT_COUNT; slot++) {
+      if ((numericKitMask & (1U << slot)) != 0) {
+        if (numericKitFiles[slot].length() >= sizeof(filenames[slot])) {
+          Serial.printf("[Sampler] Skipping too-long path for slot %u: %s\n",
+                        (unsigned)(slot + 1), numericKitFiles[slot].c_str());
+          continue;
+        }
+        strncpy(filenames[slot], numericKitFiles[slot].c_str(), sizeof(filenames[slot]) - 1);
+      }
+    }
+  } else {
+    // Compatibility path for old kits that have no 01..16 prefixes.
+    for (uint8_t slot = 0; slot < DRUM_SLOT_COUNT && slot < legacyKitFileCount; slot++) {
+      if (legacyKitFiles[slot].length() < sizeof(filenames[slot])) {
+        strncpy(filenames[slot], legacyKitFiles[slot].c_str(), sizeof(filenames[slot]) - 1);
+      }
+    }
+  }
+
+  for (uint8_t slot = 0; slot < DRUM_SLOT_COUNT; slot++) {
+    if (filenames[slot][0] != '\0') {
+      sampleInfoCount = DRUM_SLOT_COUNT;
+      return;
+    }
+  }
+}
+
+bool Sampler::LoadSdSample(uint8_t slot, size_t &buffPointer, size_t cacheLimit) {
+  File f = SD_MMC.open((String)filenames[slot]);
+  if (!f) {
+    Serial.print("[Sampler] SD open failed: " );
+    Serial.println(filenames[slot]);
+    return false;
+  }
+
+  const size_t fileLength = f.size();
+  if (fileLength < 44 || buffPointer > cacheLimit) {
+    f.close();
+    return false;
+  }
+
+  union wavHeader wav;
+  if (f.read(wav.wavHdr, sizeof(wav.wavHdr)) != sizeof(wav.wavHdr)) {
+    f.close();
+    return false;
+  }
+
+  const size_t pcmBytes = fileLength - sizeof(wav.wavHdr);
+  if (pcmBytes > cacheLimit - buffPointer) {
+    Serial.printf("[Sampler] Cache full while loading %s at sample %d\n",
+                  filenames[slot], slot);
+    f.close();
+    return false;
+  }
+
+  const size_t start = buffPointer;
+  size_t remaining = pcmBytes;
+  while (remaining > 0) {
+    const size_t toRead = min(remaining, (size_t)(1UL << 15));
+    if (f.read(&RamCache[buffPointer], toRead) != toRead) {
+      buffPointer = start;
+      f.close();
+      return false;
+    }
+    buffPointer += toRead;
+    remaining -= toRead;
+    delay(1);
+  }
+  f.close();
+
+  wav.dataSize = min((size_t)wav.dataSize, pcmBytes);
+  if (wav.dataSize == 0) {
+    buffPointer = start;
+    return false;
+  }
+  samplePlayer[slot].sampleStart = start;
+  samplePlayer[slot].sampleRate = wav.sampleRate;
+  samplePlayer[slot].sampleSize = wav.dataSize;
+  samplePlayer[slot].sampleSeek = 0xFFFFFFFF;
+  Serial.print("[Sampler] Loaded SD slot " );
+  Serial.print(slot + 1);
+  Serial.print(": " );
+  Serial.println(filenames[slot]);
+  return true;
 }
 
 
@@ -171,6 +295,11 @@ void Sampler::Init() {
   // SHIELD the sampler: zero out count so Process() ignores the buffer during reload
   sampleInfoCount = 0; 
   memset(filenames, 0, sizeof(filenames));
+  numericKitMask = 0;
+  legacyKitFileCount = 0;
+  directSlotKit = true; // default/embedded fallback uses the new 16-slot layout
+  for (uint8_t i = 0; i < DRUM_SLOT_COUNT; i++) numericKitFiles[i] = "";
+  for (uint8_t i = 0; i < SAMPLECNT; i++) legacyKitFiles[i] = "";
   delay(50); // Give audio task time to see sampleInfoCount=0 (audio task runs at 44.1kHz)
   yield();   // Ensure any pending WDT servicing runs
 
@@ -213,8 +342,6 @@ void Sampler::Init() {
   #endif
 #endif
 
-  sampleInfoCount = 0;
-
   // Try SD card first
   if (SD_MMC.cardType() != CARD_NONE) {
     File testDir = SD_MMC.open(sdKitPath);
@@ -222,8 +349,9 @@ void Sampler::Init() {
       Serial.printf("  Found SD kit folder: %s\n", sdKitPath.c_str());
       testDir.close();
 
-      ScanContents(SD_MMC, sdKitPath.c_str(), 5);
-      Serial.printf("  Found %d samples on SD card\n", sampleInfoCount);
+       ScanContents(SD_MMC, sdKitPath.c_str(), 5);
+       PrepareKitSampleSlots();
+       Serial.printf("  Found %d candidate sample slots on SD card\n", sampleInfoCount);
     } else {
       Serial.printf("  SD kit folder not found: %s\n", sdKitPath.c_str());
       if (testDir) testDir.close();
@@ -231,19 +359,6 @@ void Sampler::Init() {
   } else {
     Serial.println("  SD card not available");
   }
-
-  // If SD didn't yield enough samples, fall back to embedded samples.h
-  if (sampleInfoCount < 5) {
-    Serial.println("  Loading embedded samples from samples.h...");
-    LoadEmbeddedSamples();
-
-    // Reset sampleInfoCount if LoadEmbeddedSamples set it
-    // (LoadEmbeddedSamples sets sampleInfoCount internally)
-  }
-
-  repeat = min((uint8_t)sampleInfoCount, repeat); // 12 (an octave) or less
-
-  if (repeat == 0) repeat = 1;
 
 #ifndef NO_PSRAM
   // Allocate PSRAM buffer if not already done by LoadEmbeddedSamples
@@ -279,77 +394,34 @@ void Sampler::Init() {
 #ifdef DEBUG_SAMPLER
   DEBUG("---\nList Samples:");
 #endif
-  // Local buffPointer — NOT static, resets to 0 on every Init() call
+  // Local buffPointer resets to 0 on every Init() call.
   size_t buffPointer = 0;
 #ifndef NO_PSRAM
   const size_t cacheLimit = PSRAM_SAMPLER_CACHE;
 #else
   const size_t cacheLimit = RAM_SAMPLER_CACHE;
 #endif
-  for (int i = 0; i < sampleInfoCount; i++ ) {
-#ifdef DEBUG_SAMPLER
-    DEBF( "s[%d]: %s\n", i, filenames[i] );
-#endif
+  if (RamCache == NULL) {
+    sampleInfoCount = 0;
+    return;
+  }
 
-    // Only load from SD if we have filenames (SD was used)
-    if (sampleInfoCount >= 5 && filenames[i][0] != '\0') {
-      File f = SD_MMC.open( (String)(filenames[i]) );
-
-      if ( f ) {
-        size_t len = f.size();
-        size_t toRead = 512;
-        size_t oldPointer = 0;
-
-        union wavHeader wav;
-        if ( len ) {
-          toRead = sizeof(wav.wavHdr);
-          f.read(&(wav.wavHdr[0]), toRead);
-          len -= toRead;
-        }
-
-        // load sample data to the RAM/PSRAM buffer
-        samplePlayer[i].sampleStart = buffPointer;
-        oldPointer = buffPointer;
-        while( len ){
-          if(len > (1UL<<15)){
-            toRead = (1UL<<15);
-          } else {
-            toRead = len;
-          }
-          if (buffPointer + toRead > cacheLimit) {
-            Serial.printf("[Sampler] Cache full while loading %s at sample %d\n", filenames[i], i);
-            len = 0;
-            break;
-          }
-          f.read(&(RamCache[buffPointer]), toRead);
-          buffPointer += toRead;
-          len -= toRead;
-          // Yield to prevent WDT timeout during SD card reads
-          delay(1);
-        }
-        wav.dataSize = min((size_t)wav.dataSize, buffPointer - oldPointer);
-
-        // If nothing fit in cache for this sample, stop loading further entries.
-        if (wav.dataSize == 0) {
-          sampleInfoCount = i;
-          f.close();
-          break;
-        }
-
-        samplePlayer[i].sampleRate =      wav.sampleRate;
-#ifdef DEBUG_SAMPLER
-        DEBF("fileSize: %d\n",            wav.fileSize);
-        DEBF("lengthOfData: %d\n",        wav.lengthOfData);
-        DEBF("numberOfChannels: %d\n",    wav.numberOfChannels);
-        DEBF("sampleRate: %d\n",          wav.sampleRate);
-        DEBF("bitsPerSample: %d\n",       wav.bitsPerSample);
-        DEBF("dataSize: %d\n",            wav.dataSize);
-#endif
-        samplePlayer[i].sampleSize =      wav.dataSize;
-        samplePlayer[i].sampleSeek =      0xFFFFFFFF;
-        f.close();
-      } else {
-        DEBF("error opening file!\n");
+  // Every kit has a stable 16-slot address space. SD samples replace their
+  // numbered/legacy slot; absent or invalid files use the embedded fallback.
+  sampleInfoCount = DRUM_SLOT_COUNT;
+  repeat = directSlotKit ? DRUM_SLOT_COUNT : 12;
+  for (uint8_t i = 0; i < DRUM_SLOT_COUNT; i++) {
+    bool loaded = false;
+    if (filenames[i][0] != '\0') loaded = LoadSdSample(i, buffPointer, cacheLimit);
+    if (!loaded) {
+      if (filenames[i][0] != '\0') {
+        Serial.printf("[Sampler] Using fallback for slot %u (%s)\n",
+                      (unsigned)(i + 1), filenames[i]);
+      }
+      if (!LoadEmbeddedSample(i, buffPointer, cacheLimit)) {
+        Serial.printf("[Sampler] Fallback sample %u does not fit in cache\n", (unsigned)(i + 1));
+        sampleInfoCount = i;
+        break;
       }
     }
     // Embedded samples already loaded by LoadEmbeddedSamples() — nothing more to do
@@ -462,23 +534,20 @@ void Sampler::NoteOn( uint8_t note, uint8_t vol ) {
   if ( sampleInfoCount == 0 ) {
     return;
   }
-  int j = note % sampleInfoCount;
-  int param_i = note % repeat + 1;
+  int j = note % repeat;
+  int param_i = j + 1;
 
   if ( is_muted[ param_i ] == true) {
     return;
   }
 
 #ifdef GROUP_HATS
-  switch (param_i) {
-    case 7:
-      samplePlayer[note+1].active = false;
-      break;
-    case 8:
-      samplePlayer[note-1].active = false;
-      break;
-    default:
-      break;
+  const uint8_t closedHatSlot = directSlotKit ? CH_NUMBER : 6;
+  const uint8_t openHatSlot = directSlotKit ? OH_NUMBER : 7;
+  if (j == closedHatSlot) {
+    samplePlayer[openHatSlot].active = false;
+  } else if (j == openHatSlot) {
+    samplePlayer[closedHatSlot].active = false;
   }
 #endif
 
@@ -691,23 +760,23 @@ void Sampler::ParseCC(uint8_t cc_number , uint8_t cc_value) {
       SetNoteVolume_Midi( cc_value );
       break;
     case CC_808_CH_TUNE:
-      SelectNote( 6 ); // CH
+      SelectNote(directSlotKit ? 2 : 6); // CH: direct slot 003, legacy slot 007
       SetSoundPitch_Midi( cc_value );
       break;
     case CC_808_CH_LEVEL:
-      SelectNote( 6 ); // CH
+      SelectNote(directSlotKit ? 2 : 6); // CH: direct slot 003, legacy slot 007
       SetNoteVolume_Midi( cc_value );
       break;
     case CC_808_OH_TUNE:
-      SelectNote( 7 ); // OH
+      SelectNote(directSlotKit ? 3 : 7); // OH: direct slot 004, legacy slot 008
       SetSoundPitch_Midi( cc_value );
       break;
     case CC_808_OH_LEVEL:
-      SelectNote( 7 ); // OH
+      SelectNote(directSlotKit ? 3 : 7); // OH: direct slot 004, legacy slot 008
       SetNoteVolume_Midi( cc_value );
       break;
     case CC_808_OH_DECAY:
-      SelectNote( 7 ); // OH
+      SelectNote(directSlotKit ? 3 : 7); // OH: direct slot 004, legacy slot 008
       SetNoteDecay_Midi( cc_value );
       break;
       /*

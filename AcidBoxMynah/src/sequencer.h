@@ -134,6 +134,10 @@ void sequencer_midi_step();
 // Toggle a drum step on/off for a specific lane (bitmask)
 void sequencer_toggle_drum_step(uint8_t step, uint16_t laneMask);
 
+// Pattern files written before the 16-slot mapping used CLAV (bit 11) as a
+// second CLAP trigger. Keep that mapping when loading those files.
+void sequencer_set_legacy_drum_mapping(bool legacyMapping);
+
 // Toggle a synth step on/off for Syn1 or Syn2
 void sequencer_toggle_synth_step(uint8_t step, EditType type);
 

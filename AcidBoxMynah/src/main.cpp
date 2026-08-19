@@ -432,9 +432,9 @@ void visualizerNoteOn(uint8_t voice, uint8_t note, bool accent, bool slide) {
   } else {
     // Drums (voice 2): 5 drum voices mapped to LEDs 11..15
     // The MIDI note = current_drumkit + drum_instrument_index.
-    // Extract the instrument index: drum_instrument = note % 12
-    // Drum instrument numbers: 0=kick, 1=snare, 6=CH, 7=OH, 9=crash, 11=perc
-    uint8_t drumInstr = note % 12;
+    // Extract the instrument index from the current 16-slot kit.
+    // Legacy jukebox notes retain their existing offsets within the group.
+    uint8_t drumInstr = note % DRUM_SLOT_COUNT;
     uint8_t led;
     uint8_t drumType;
 

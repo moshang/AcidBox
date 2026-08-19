@@ -210,6 +210,35 @@ Program Change is implemented on channel 10 only:
 
 Program Change on other channels is ignored.
 
+## Drum-kit sample slots
+
+The current firmware exposes 16 drum lanes and loads a kit from:
+
+```text
+/ACIDBOX/KITS/<program-number>/
+```
+
+When a kit contains files whose names begin with `001` through `016`, those
+numeric prefixes define the slot directly. For example, `001_BD.wav` loads
+into slot 0 and `016_TIMB.wav` loads into slot 15. Missing numbered files are
+filled from the embedded fallback samples. The original ten fallback entries
+are preserved; slots 10 and 11 repeat the first two fallback entries, and
+slots 12 through 15 repeat fallback slots 0 through 3.
+
+If a kit has no `001`–`016` prefixes, the legacy directory-order loading path
+is used for compatibility. The first 16 files become slots 0 through 15 and
+any missing slots use the fallback samples.
+
+Each numbered sample slot maps directly to the same numbered drum lane: 001=BD, 002=SD, 003=CH, 004=OH, 005=CLAP, 006=LT, 007=MT, 008=HT, 009=CR, 010=RIM, 011=MAR, 012=CLAV, 013=COW, 014=CY, 015=CONG, and 016=TIMB. The sequencer and jukebox use these direct offsets.
+
+The sample cache remains 1,572,864 bytes (1.5 MiB) of PSRAM and stores the
+uncompressed PCM payloads. All 16 slot payloads, including fallback samples,
+must fit in that shared cache.
+
+Saved pattern files retain their existing binary layout. Files written by
+save versions 1–3 keep the historical CLAV-as-CLAP mapping; newly written
+version-4 files use CLAV for slot 10 so all 16 slots are addressable.
+
 ## Pitch Bend
 
 Pitch Bend is implemented on synth channels 1 and 2.

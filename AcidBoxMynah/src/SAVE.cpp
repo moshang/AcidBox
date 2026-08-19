@@ -246,6 +246,9 @@ bool saveAcidBoxPattern(uint8_t bankNum, uint8_t songNum, uint8_t patternNum) {
     pf.scaleIndex = scaleIndex;
     pf.rootNote   = rootNote;
 
+    // A newly written version-4 pattern uses the 16-slot drum mapping.
+    sequencer_set_legacy_drum_mapping(false);
+
     // Write to file
     getAcidBoxPatternPath(path, bankNum, songNum, patternNum);
     File file = SD_MMC.open(path, FILE_WRITE);
@@ -314,6 +317,10 @@ bool loadAcidBoxPattern(uint8_t bankNum, uint8_t songNum, uint8_t patternNum) {
         Serial.printf("❌ Invalid magic: 0x%08X (expected 0x%08X)\n", pf.magic, ACIDBOX_SAVE_MAGIC);
         return false;
     }
+
+    // Versions through 3 used bit 11 (CLAV) as a second CLAP trigger. Keep
+    // that behavior for existing files; version 4 uses it for sample slot 10.
+    sequencer_set_legacy_drum_mapping(pf.version < ACIDBOX_SAVE_VERSION);
 
     // Copy pattern data into globalSeq
     memcpy(&globalSeq.synth1, &pf.synth1, sizeof(SynthPattern));

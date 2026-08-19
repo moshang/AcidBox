@@ -44,21 +44,22 @@ static bool   cutoffInterp_2 = false;
 static uint8_t cutoffFrom_d = 0;
 static uint8_t cutoffTo_d = 0;
 static bool   cutoffInterp_d = false;
+static bool   legacyClavMapping = false;
 
 // ============================================================
 // Drum voice MIDI note mappings (matching AcidBanger.cpp)
 // ============================================================
 #define KICK_NOTE  0  // BD
 #define SNARE_NOTE 1  // SD
-#define CH_NOTE    6  // CH (closed hat)
-#define OH_NOTE    7  // OH (open hat)
+#define CH_NOTE    2  // CH -> slot 003
+#define OH_NOTE    3  // OH -> slot 004
 #define CLAP_NOTE  4  // CLAP (handclap)
-#define LT_NOTE    2  // low tom
-#define MT_NOTE    3  // mid tom
-#define HT_NOTE    5  // high tom
-#define CRASH_NOTE 9  // CR
-#define RIM_NOTE   8  // rimshot
-#define PERC_NOTE  11 // percussion / maraca
+#define LT_NOTE    5  // LT -> slot 006
+#define MT_NOTE    6  // MT -> slot 007
+#define HT_NOTE    7  // HT -> slot 008
+#define CRASH_NOTE 8  // CR -> slot 009
+#define RIM_NOTE   9  // RIM -> slot 010
+#define PERC_NOTE  10 // MAR -> slot 011
 
 // ============================================================
 // Helper: calculate microseconds per 16th note at given BPM
@@ -421,14 +422,34 @@ uint32_t sequencer_tick() {
       { 1 << 7,  HT_NOTE    },  // HT
       { 1 << 8,  CRASH_NOTE },  // CR
       { 1 << 9,  RIM_NOTE   },  // RIM
-      { 1 << 10, PERC_NOTE  },  // MAR (maraca/shaker)
-      { 1 << 11, CLAP_NOTE  },  // CLAV (claves → reuse clap note for simplicity)
+      { 1 << 10, PERC_NOTE  },  // MAR (maraca/shaker) -> slot 011
+      { 1 << 11, (uint8_t)(legacyClavMapping ? CLAP_NOTE : 10) }, // CLAV
+      { 1 << 12, 12          },  // COW - extended slot
+      { 1 << 13, 13          },  // CY - extended slot
+      { 1 << 14, 14          },  // CONG - extended slot
+      { 1 << 15, 15          },  // TIMB - extended slot
     };
     static const size_t numDrumEntries = sizeof(drumMap) / sizeof(drumMap[0]);
 
     for (size_t i = 0; i < numDrumEntries; i++) {
       if (drumMask & drumMap[i].bit) {
-        uint8_t midiNote = current_drumkit + drumMap[i].note;
+        uint8_t drumNote = drumMap[i].note;
+        if (!Drums.IsDirectSlotKit()) {
+          // Legacy kits retain the original 12-slot voice positions.
+          switch (drumMap[i].bit) {
+            case (1 << 2):  drumNote = 6;  break; // CH
+            case (1 << 3):  drumNote = 7;  break; // OH
+            case (1 << 5):  drumNote = 2;  break; // LT
+            case (1 << 6):  drumNote = 3;  break; // MT
+            case (1 << 7):  drumNote = 5;  break; // HT
+            case (1 << 8):  drumNote = 9;  break; // CR
+            case (1 << 9):  drumNote = 8;  break; // RIM
+            case (1 << 10): drumNote = 11; break; // PERC
+            case (1 << 11): drumNote = 4;  break; // legacy CLAV -> CLAP
+            default: break;
+          }
+        }
+        uint8_t midiNote = current_drumkit + drumNote;
         uint8_t vel = 100;
         midi_send_noteon(DRUM_MIDI_CHAN, midiNote, vel);
         handleNoteOn(DRUM_MIDI_CHAN, midiNote, vel);
@@ -706,6 +727,10 @@ void sequencer_toggle_drum_step(uint8_t step, uint16_t laneMask) {
   // Toggle the bit for this lane at the given step
   globalSeq.drum.steps[step] ^= laneMask;
   acidBoxSaveLoad.modified = true;
+}
+
+void sequencer_set_legacy_drum_mapping(bool legacyMapping) {
+  legacyClavMapping = legacyMapping;
 }
 
 // ============================================================

@@ -56,10 +56,10 @@
 
 #define KICK_NOTE               0 //001
 #define SNARE_NOTE              1 //002
-#define CLOSED_HAT_NOTE         CH_NUMBER //007
-#define OPEN_HAT_NOTE           OH_NUMBER //008
-#define PERCUSSION_NOTE         11 //005
-#define CRASH_NOTE              9 //010
+#define CLOSED_HAT_NOTE         2 //003
+#define OPEN_HAT_NOTE           3 //004
+#define PERCUSSION_NOTE         10 //011
+#define CRASH_NOTE              8 //009
 
 // Pin numbers to which are buttons attached (connect one side of button to pin, the other to ground)
 #define GEN_SYNTH1_BUTTON_PIN   23
@@ -93,7 +93,7 @@
   #define VOL_DRUMS     100
 #endif
 
-uint8_t current_drumkit = (DEFAULT_DRUMKIT*12); // offset for drum note numbers (instruments are groupped by 12)
+uint8_t current_drumkit = 0; // direct 001-016 slot offsets
 
 struct sSynthCCs {
   uint8_t cc_number;
@@ -449,7 +449,18 @@ static void instr_noteon(byte instr, byte value, byte do_glide, byte do_accent) 
 #endif
   if (ins->is_drum) {
     // For drums: value is volume, accent and glide are ignored
-    instr_noteon_raw(instr, current_drumkit + ins->drum_note, value, 0);
+    uint8_t drumNote = ins->drum_note;
+    if (!Drums.IsDirectSlotKit()) {
+      // Legacy kits use the original 12-slot instrument positions.
+      switch (instr) {
+        case 4: drumNote = 6;  break; // CH
+        case 5: drumNote = 7;  break; // OH
+        case 6: drumNote = 11; break; // percussion
+        case 7: drumNote = 9;  break; // crash
+        default: break;
+      }
+    }
+    instr_noteon_raw(instr, current_drumkit + drumNote, value, 0);
   } else {
     // For non-drums: value is note, volume is accent, glide is used
     instr_noteon_raw(instr, value, do_accent ? AccentedMidiVol : NormalMidiVol, do_glide);
@@ -524,7 +535,7 @@ void sequencer_step(byte step) {
     //    instr_noteon_raw(NumInstruments-1, CRASH_NOTE, 127, 0);
     if (flip(30)) {
       //change drumkit
-      current_drumkit = myRandom(((Drums.GetSamplesCount()-1)/12)) * 12 ;
+      current_drumkit = myRandom(((Drums.GetSamplesCount()-1)/DRUM_SLOT_COUNT)) * DRUM_SLOT_COUNT ;
       
 //#ifdef DEBUG_JUKEBOX
       DEBF("Selected drumkit: %d\r\n" , current_drumkit);
@@ -635,6 +646,7 @@ static void generate_drums(byte *kick, byte *snare, byte *oh, byte *ch, byte *pe
   memset(oh,    0, PatternLength);
   memset(ch,    0, PatternLength);
   memset(perc,  0, PatternLength);
+  memset(crash, 0, PatternLength);
 
   byte kick_mode =  KickNone;
   byte hat_mode =   HatsNone;

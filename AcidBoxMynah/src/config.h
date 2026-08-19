@@ -162,8 +162,9 @@ const uint8_t POT_PINS[POT_NUM] = {34, 35, 36};
 #define FORMAT_LITTLEFS_IF_FAILED true
 
 #define GROUP_HATS  // if so, instruments CH_NUMBER and OH_NUMBER will terminate each other (sampler module)
-#define CH_NUMBER  6 // closed hat instrument number in kit (for groupping, zero-based)
-#define OH_NUMBER  7 // open hat instrument number in kit (for groupping, zero-based)
+#define CH_NUMBER  2 // closed hat slot (003), zero-based
+#define OH_NUMBER  3 // open hat slot (004), zero-based
+#define DRUM_SLOT_COUNT 16 // one sample slot for each drum sequencer lane
 
 // PSRAM configuration for ESP32-S3 SuperMini (2MB quad-SPI PSRAM)
 // Memory budget:
@@ -172,7 +173,7 @@ const uint8_t POT_PINS[POT_NUM] = {34, 35, 36};
 //   ~172 KB  — headroom for stack, heap fragmentation, etc.
 //   Total:   ~2.0 MB
 #define PSRAM_SAMPLER_CACHE 1572864 // 1.5 MB — fits comfortably in 2MB PSRAM with delay buffer
-#define SAMPLECNT       (7 * 12)    // how many samples we prepare (7 octaves by 12 samples)
+#define SAMPLECNT       (7 * 12)    // maximum sample entries retained by the sampler
 #define DEFAULT_DRUMKIT 1           // kit 1 = folder KITS1 (SD card: /ACIDBOX/KITS1/)
 
 #define TINY 1e-32;

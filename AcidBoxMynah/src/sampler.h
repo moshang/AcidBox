@@ -34,6 +34,7 @@ DEBF("Select note: %d\r\n", note);
     uint8_t GetSoundPitch_Midi()  { return samplePlayer[ selectedNote ].pitch_midi; };
     uint8_t GetSoundVolume_Midi() { return samplePlayer[ selectedNote ].volume_midi; };
     int32_t GetSamplesCount()     { return sampleInfoCount; }
+    bool IsDirectSlotKit() const { return directSlotKit; }
     // Offset   for the Sample-Playback to cut the sample from the left
     void NoteOn( uint8_t note, uint8_t vol );
     void NoteOff( uint8_t note );
@@ -60,6 +61,10 @@ DEBF("Select note: %d\r\n", note);
     
   private:
     void LoadEmbeddedSamples();
+    bool LoadEmbeddedSample(uint8_t slot, size_t &buffPointer, size_t cacheLimit);
+    bool LoadSdSample(uint8_t slot, size_t &buffPointer, size_t cacheLimit);
+    void PrepareKitSampleSlots();
+    bool IsNumericKitFile(const String &path, uint8_t &slot) const;
     boolean is_muted[17]={ false, false,false,false,false ,false,false,false,false ,false,false,false,false ,false,false,false,false };
                   
     uint8_t volume_midi[17]     = { 127, 127,127,127,127, 127,127,127,127, 127,127,127,127, 127,127,127,127 };
@@ -73,7 +78,8 @@ DEBF("Select note: %d\r\n", note);
     uint8_t  program_midi = 0; 
     uint8_t  program_tmp = DEFAULT_DRUMKIT; 
     uint8_t  progNumber = DEFAULT_DRUMKIT; 
-    uint8_t  repeat = 12; // repeat instruments every ....
+    uint8_t  repeat = DRUM_SLOT_COUNT; // repeat instruments every kit width
+    bool directSlotKit = true; // true for 01-16 files, false for legacy directory-order kits
     float _volume = 1.0f;
     float sampler_playback = 1.0f;
     volatile uint8_t selectedNote = 0;
@@ -131,7 +137,12 @@ DEBF("Select note: %d\r\n", note);
     } samplePlayerS ;
     
     samplePlayerS samplePlayer[ SAMPLECNT ];
-    char filenames[ SAMPLECNT ][32];
+    // Full SD paths include /ACIDBOX/KITS/<kit>/ plus the source filename.
+    // 32 bytes was too small for normal numbered kit files such as
+    // 01_Cassette808_BD01.wav, causing PrepareKitSampleSlots() to reject
+    // every discovered file and silently use embedded fallback samples.
+    static constexpr size_t SAMPLE_PATH_CAPACITY = 128;
+    char filenames[ SAMPLECNT ][SAMPLE_PATH_CAPACITY ];
    // samplePlayerS* samplePlayer = NULL;
     
     // float global_pitch_decay = 0.0f; // good from -0.2 to +1.0
@@ -139,6 +150,13 @@ DEBF("Select note: %d\r\n", note);
     volatile int32_t sampleInfoCount = -1; // storing the count if found samples in file system 
     float slowRelease; // slow releasing signal will be used when sample playback stopped 
     uint8_t* RamCache = NULL ;
+
+    // Sample discovery state. Numeric 01..16 filenames take precedence;
+    // legacy kits without those prefixes retain directory-order loading.
+    String numericKitFiles[DRUM_SLOT_COUNT];
+    String legacyKitFiles[SAMPLECNT];
+    uint16_t numericKitMask = 0;
+    uint8_t legacyKitFileCount = 0;
 
     FxFilterCrusher Effects;
 
