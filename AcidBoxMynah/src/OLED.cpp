@@ -129,7 +129,12 @@ void updateOLED()
             int ki = Drums.GetKitIndex();
             char buf[32];
             snprintf(buf, sizeof(buf), "%s", Drums.GetKitName(ki));
+            int kitNameWidth = u8g2.getStrWidth(buf);
             u8g2.print(buf);
+
+            u8g2.setFont(u8g2_font_helvR08_tf);
+            u8g2.setCursor(kitNameWidth + 4, 45);
+            u8g2.print(Drums.IsKitLoaded(ki) ? "[POT-SELECT]" : "[F4-LOAD]");
         }
         else
         {

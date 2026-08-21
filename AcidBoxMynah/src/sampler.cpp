@@ -985,6 +985,24 @@ const char* Sampler::GetCurrentKitName() {
     return kitNames[kitSelectIndex].c_str();
 }
 
+bool Sampler::IsKitLoaded(int i) const {
+    if (i < 0 || i >= (int)kitNames.size()) return false;
+
+    // Keep this identity rule in sync with LoadKitByIndex(): kit folders may
+    // be named "KITS1", "1", or "kit_3"; otherwise use the list position.
+    const char* name = kitNames[i].c_str();
+    int kitNum = i + 1;
+    const char* p = name;
+    while (*p) {
+        if (*p >= '0' && *p <= '9') {
+            kitNum = atoi(p);
+            break;
+        }
+        p++;
+    }
+    return (uint8_t)kitNum == progNumber;
+}
+
 void Sampler::LoadKitByIndex(int i) {
     if (i < 0 || i >= (int)kitNames.size()) return;
     // Mute audio output during loading to avoid clicks/pops/distortion

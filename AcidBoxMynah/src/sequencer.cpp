@@ -423,7 +423,10 @@ uint32_t sequencer_tick() {
       { 1 << 8,  CRASH_NOTE },  // CR
       { 1 << 9,  RIM_NOTE   },  // RIM
       { 1 << 10, PERC_NOTE  },  // MAR (maraca/shaker) -> slot 011
-      { 1 << 11, (uint8_t)(legacyClavMapping ? CLAP_NOTE : 10) }, // CLAV
+      // Legacy patterns used bit 11 as a second CLAP trigger. In the current
+      // 16-slot format it is the CLAV lane and must select slot 012 (index 11),
+      // not slot 011 (index 10), which is the MAR sample above.
+      { 1 << 11, (uint8_t)(legacyClavMapping ? CLAP_NOTE : 11) }, // CLAV
       { 1 << 12, 12          },  // COW - extended slot
       { 1 << 13, 13          },  // CY - extended slot
       { 1 << 14, 14          },  // CONG - extended slot

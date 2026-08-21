@@ -56,6 +56,7 @@ DEBF("Select note: %d\r\n", note);
     void SetKitIndex(int i);
     const char* GetKitName(int i);
     const char* GetCurrentKitName(); // returns kitNames[kitSelectIndex] or "---"
+    bool IsKitLoaded(int i) const; // true when the kit's program number is loaded
     void LoadKitByIndex(int i); // calls SetProgram with appropriate number
     bool isKitListReady() { return kitListReady; }
     
